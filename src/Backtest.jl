@@ -46,7 +46,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
     long_psize, long_pprice = 0.0, 0.0
     shrt_psize, shrt_pprice = 0.0, 0.0
     liq_price, liq_diff = 0.0, 1.0
-    balance = config["starting_balance"]
+    balance = Float64(config["starting_balance"])
     pbr_limit = 1.0
     
     # Check for initial positions in config
@@ -82,7 +82,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
     
     # Statistics tracking
     next_stats_update = 0.0
-    stats = Dict[]
+    stats = Dict{String,Any}[]
     
     # Helper function to update stats
     function stats_update(tick)
@@ -92,14 +92,14 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
         upnl_s = Jitted.calc_shrt_pnl(shrt_pprice, tick[1], shrt_psize)
         upnl_s = isnan(upnl_s) ? 0.0 : upnl_s
         
-        push!(stats, Dict(
+        push!(stats, Dict{String,Any}(
             "timestamp" => tick[3],
             "balance" => balance,
             "equity" => balance + upnl_l + upnl_s
         ))
     end
     
-    all_fills = Dict[]
+    all_fills = Dict{String,Any}[]
     bids = Vector{Any}[]
     asks = Vector{Any}[]
     
@@ -183,7 +183,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                     while !isempty(bids)
                         if tick[1] < bids[1][2]
                             bid = popfirst!(bids)
-                            fill = Dict(
+                            fill = Dict{String,Any}(
                                 "qty" => bid[1],
                                 "price" => bid[2],
                                 "side" => "buy",
@@ -258,7 +258,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                     while !isempty(asks)
                         if tick[1] > asks[1][2]
                             ask = popfirst!(asks)
-                            fill = Dict(
+                            fill = Dict{String,Any}(
                                 "qty" => ask[1],
                                 "price" => ask[2],
                                 "side" => "sel",
@@ -324,12 +324,12 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                 balance, long_psize, long_pprice, shrt_psize, shrt_pprice,
                 liq_price, ob[1], ob[2], ema_chunk_val[chunk_i], tick[1],
                 volatility_chunk[chunk_i], 
-                xk["do_long"], xk["do_shrt"], xk["qty_step"], xk["price_step"],
-                xk["min_qty"], xk["min_cost"], 1.0, 1.0, xk["leverage"],
-                xk["n_close_orders"], xk["grid_spacing"], 1.0,
+                xk["do_long"] > 0.5, xk["do_shrt"] > 0.5, xk["qty_step"], xk["price_step"],
+                xk["min_qty"], xk["min_cost"], xk["ddown_factor"], xk["qty_pct"], xk["leverage"],
+                xk["n_close_orders"], xk["grid_spacing"], xk["pos_margin_grid_coeff"],
                 xk["volatility_grid_coeff"], xk["volatility_qty_coeff"],
-                xk["min_markup"], xk["markup_range"], Float64(ema_span), 0.0,
-                0.0, 0.0, 0.0
+                xk["min_markup"], xk["markup_range"], Float64(ema_span), xk["ema_spread"],
+                xk["stop_loss_liq_diff"], xk["stop_loss_pos_pct"], xk["entry_liq_diff_thr"]
             )
                 if length(bids) > 2 && length(asks) > 2
                     break
@@ -347,12 +347,12 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
             if tick[1] <= shrt_pprice && shrt_pprice > 0.0
                 for tpl in Jitted.iter_shrt_closes(
                     balance, shrt_psize, shrt_pprice, ob[1],
-                    xk["do_long"], xk["do_shrt"], xk["qty_step"], xk["price_step"],
-                    xk["min_qty"], xk["min_cost"], 1.0, 1.0, xk["leverage"],
-                    xk["n_close_orders"], xk["grid_spacing"], 1.0,
+                    xk["do_long"] > 0.5, xk["do_shrt"] > 0.5, xk["qty_step"], xk["price_step"],
+                    xk["min_qty"], xk["min_cost"], xk["ddown_factor"], xk["qty_pct"], xk["leverage"],
+                    xk["n_close_orders"], xk["grid_spacing"], xk["pos_margin_grid_coeff"],
                     xk["volatility_grid_coeff"], xk["volatility_qty_coeff"],
-                    xk["min_markup"], xk["markup_range"], Float64(ema_span), 0.0,
-                    0.0, 0.0, 0.0
+                    xk["min_markup"], xk["markup_range"], Float64(ema_span), xk["ema_spread"],
+                    xk["stop_loss_liq_diff"], xk["stop_loss_pos_pct"], xk["entry_liq_diff_thr"]
                 )
                     push!(bids, vcat(collect(tpl), [shrt_pprice, "shrt_close"]))
                 end
@@ -362,12 +362,12 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
             if tick[1] >= long_pprice && long_pprice > 0.0
                 for tpl in Jitted.iter_long_closes(
                     balance, long_psize, long_pprice, ob[2],
-                    xk["do_long"], xk["do_shrt"], xk["qty_step"], xk["price_step"],
-                    xk["min_qty"], xk["min_cost"], 1.0, 1.0, xk["leverage"],
-                    xk["n_close_orders"], xk["grid_spacing"], 1.0,
+                    xk["do_long"] > 0.5, xk["do_shrt"] > 0.5, xk["qty_step"], xk["price_step"],
+                    xk["min_qty"], xk["min_cost"], xk["ddown_factor"], xk["qty_pct"], xk["leverage"],
+                    xk["n_close_orders"], xk["grid_spacing"], xk["pos_margin_grid_coeff"],
                     xk["volatility_grid_coeff"], xk["volatility_qty_coeff"],
-                    xk["min_markup"], xk["markup_range"], Float64(ema_span), 0.0,
-                    0.0, 0.0, 0.0
+                    xk["min_markup"], xk["markup_range"], Float64(ema_span), xk["ema_spread"],
+                    xk["stop_loss_liq_diff"], xk["stop_loss_pos_pct"], xk["entry_liq_diff_thr"]
                 )
                     push!(asks, vcat(collect(tpl), [long_pprice, "long_close"]))
                 end
@@ -388,7 +388,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                 
                 liq_price = calc_liq_price(
                     balance, long_psize, long_pprice, shrt_psize, shrt_pprice,
-                    config["max_leverage"]
+                    Float64(config["max_leverage"])
                 )
                 liq_diff = Jitted.calc_diff(liq_price, tick[1])
                 merge!(fill, Dict("liq_price" => liq_price, "liq_diff" => liq_diff))
