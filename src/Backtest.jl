@@ -63,6 +63,11 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
     profit_cumsum = 0.0
     fee_paid_cumsum = 0.0
     
+    # Set defaults for missing config keys
+    if !haskey(config, "entry_liq_diff_thr")
+        config["entry_liq_diff_thr"] = get(config, "stop_loss_liq_diff", 0.1)
+    end
+    
     # Get config keys as floats
     xk = Dict{String, Float64}(k => Float64(config[k]) for k in get_keys())
     
