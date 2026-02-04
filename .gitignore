@@ -1,0 +1,34 @@
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+/Manifest.toml
+/docs/build/
+/docs/site/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Data
+caches/
+data/
+plots/
+
+# API Keys
+api-keys.json
+
+# Temporary
+tmp/
+temp/

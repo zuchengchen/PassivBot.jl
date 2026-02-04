@@ -1,0 +1,23 @@
+{
+    "config_name": "lev10x_stable",
+    "logging_level": 0,
+    "ddown_factor": 0.5,
+    "qty_pct": 0.005,
+    "leverage": 10,
+    "n_close_orders": 1,
+    "grid_spacing": 0.0065,
+    "pos_margin_grid_coeff": 5,
+    "volatility_grid_coeff": 500,
+    "volatility_qty_coeff": 0.0,
+    "min_markup": 0.006,
+    "markup_range": 0.01,
+    "do_long": true,
+    "do_shrt": false,
+    "ema_span": 1000,
+    "ema_spread": 0.001,
+    "stop_loss_liq_diff": 0.0,
+    "stop_loss_pos_pct": 0.0,
+    "pbr_limit": 20.0,
+    "profit_trans_pct": 0.5
+}
+

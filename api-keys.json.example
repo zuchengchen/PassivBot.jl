@@ -1,0 +1,24 @@
+{
+    "binance_01": {
+        "exchange": "binance",
+        "key": "YOUR_API_KEY_HERE",
+        "secret": "YOUR_API_SECRET_HERE",
+        "telegram": {
+            "enabled": false,
+            "notify_entry_fill": false,
+            "notify_close_fill": false,
+            "token": "YOUR_TELEGRAM_BOT_TOKEN",
+            "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+        }
+    },
+    "binance_testnet": {
+        "exchange": "binance",
+        "key": "YOUR_TESTNET_API_KEY",
+        "secret": "YOUR_TESTNET_API_SECRET",
+        "telegram": {
+            "enabled": false,
+            "token": "YOUR_TELEGRAM_BOT_TOKEN",
+            "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+        }
+    }
+}
