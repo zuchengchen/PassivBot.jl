@@ -146,7 +146,7 @@ function main()
     
     # Print live config
     println("Live config:")
-    println(JSON3.write(live_config, 2))
+    println(JSON3.pretty(live_config))
     println()
     
     # Create Downloader and get tick data
