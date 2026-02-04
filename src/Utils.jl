@@ -7,7 +7,7 @@ Utility functions for PassivBot.
 using JSON3
 using Dates
 
-export load_key_secret, load_user_config, ts_to_date, make_get_filepath, sort_dict_keys
+export load_key_secret, load_user_config, ts_to_date, ts_to_date_time, make_get_filepath, sort_dict_keys
 export print_, flatten_dict, filter_orders, get_keys
 
 """
@@ -82,6 +82,26 @@ Convert Unix timestamp to ISO date string.
 function ts_to_date(timestamp::Float64)
     dt = unix2datetime(timestamp)
     return replace(string(dt), " " => "T")
+end
+
+"""
+    ts_to_date(ts::Int64) -> String
+
+Convert millisecond timestamp to "YYYY-MM-DD" format string.
+"""
+function ts_to_date(ts::Int64)
+    dt = unix2datetime(ts / 1000.0)
+    return Dates.format(dt, "yyyy-mm-dd")
+end
+
+"""
+    ts_to_date_time(ts::Int64) -> String
+
+Convert millisecond timestamp to "YYYY-MM-DD HH:MM:SS" format string.
+"""
+function ts_to_date_time(ts::Int64)
+    dt = unix2datetime(ts / 1000.0)
+    return Dates.format(dt, "yyyy-mm-dd HH:MM:SS")
 end
 
 """
