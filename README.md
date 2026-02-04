@@ -5,6 +5,8 @@
 
 A high-performance cryptocurrency trading bot for Binance Futures, written in pure Julia. Complete port of the Python passivbot with 100% feature parity and significant performance improvements.
 
+> **📌 Note**: This project is converted from the Python version at `/home/czc/projects/working/stock/passivbot3.5.6`. Some functionality may be incomplete. If you need to add or fix features, please refer to the Python version as reference.
+
 ⚠️ **Use at your own risk** ⚠️
 
 ---

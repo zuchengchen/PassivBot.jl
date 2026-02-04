@@ -1,0 +1,14 @@
+{
+    "comment": "Backtest configuration for RIVERUSDT",
+    "exchange": "binance",
+    "symbol": "RIVERUSDT",
+    "starting_balance": 1000.0,
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "base_dir": "backtests",
+    "compress_cache": true,
+    "n_days": 365,
+    "minimum_liquidation_distance": 0.05,
+    "max_hrs_no_fills": 48.0,
+    "max_hrs_no_fills_same_side": 72.0
+}

@@ -34,11 +34,11 @@ export optimize, backtest_tune
 export load_key_secret, load_user_config, ts_to_date, make_get_filepath
 export filter_orders, flatten_dict, sort_dict_keys, get_keys, print_
 
-# Jitted exports (calculation functions)
+# Jitted exports (calculation functions) - re-export from Jitted module
 export round_, round_up, round_dn, calc_diff
-export calc_ema, calc_long_pnl, calc_shrt_pnl, calc_liq_price
-export calc_new_psize_pprice, calc_orders, calc_close_orders
-export calc_min_entry_qty, calc_available_margin
+export calc_ema, calc_long_pnl, calc_shrt_pnl
+export calc_new_psize_pprice
+export calc_min_entry_qty, calc_available_margin, calc_liq_price_binance
 
 # Analysis exports
 export analyze_fills, analyze_samples, analyze_backtest
@@ -66,5 +66,18 @@ include("Optimize.jl")
 include("Downloader.jl")
 include("Analysis.jl")
 include("Plotting.jl")
+
+# Re-export Jitted functions at module level
+const round_ = Jitted.round_
+const round_up = Jitted.round_up
+const round_dn = Jitted.round_dn
+const calc_diff = Jitted.calc_diff
+const calc_ema = Jitted.calc_ema
+const calc_long_pnl = Jitted.calc_long_pnl
+const calc_shrt_pnl = Jitted.calc_shrt_pnl
+const calc_new_psize_pprice = Jitted.calc_new_psize_pprice
+const calc_min_entry_qty = Jitted.calc_min_entry_qty
+const calc_available_margin = Jitted.calc_available_margin
+const calc_liq_price_binance = Jitted.calc_liq_price_binance
 
 end # module PassivBot

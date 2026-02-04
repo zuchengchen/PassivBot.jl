@@ -12,9 +12,9 @@ using JSON3
 using DataFrames
 
 # Import specific functions for testing
-import PassivBot: round_, round_up, round_dn, calc_diff, flatten_dict
-import PassivBot: calc_ema, calc_long_pnl, calc_shrt_pnl, calc_liq_price
-import PassivBot: get_empty_analysis, objective_function, backtest
+using PassivBot: round_, round_up, round_dn, calc_diff, flatten_dict
+using PassivBot: calc_ema, calc_long_pnl, calc_shrt_pnl, calc_liq_price_binance
+using PassivBot: get_empty_analysis, objective_function, backtest
 
 println("=" ^ 60)
 println("PassivBot.jl Integration Test")
