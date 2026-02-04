@@ -109,17 +109,23 @@ function download_ticks(downloader::Downloader)::DataFrame
     dates_to_download = [(m, "monthly") for m in months]
     append!(dates_to_download, [(d, "daily") for d in days])
     
-    println("Downloading $(length(dates_to_download)) files for $symbol...")
+    total_files = length(dates_to_download)
+    println("Downloading $total_files files for $symbol...")
     
     all_dfs = DataFrame[]
+    total_rows = 0
     
-    for (date_str, period_type) in dates_to_download
+    for (idx, (date_str, period_type)) in enumerate(dates_to_download)
         # Construct URL
         if period_type == "monthly"
             url = "$(downloader.monthly_base_url)$(symbol)/$(symbol)-aggTrades-$(date_str).zip"
         else
             url = "$(downloader.daily_base_url)$(symbol)/$(symbol)-aggTrades-$(date_str).zip"
         end
+        
+        # Show progress
+        progress_pct = round(idx / total_files * 100, digits=1)
+        print("\r[$idx/$total_files] ($progress_pct%) Downloading $date_str...                    ")
         
         try
             # Download ZIP file with timeout
@@ -147,22 +153,25 @@ function download_ticks(downloader::Downloader)::DataFrame
                 select!(df, Not([:first, :last]))
                 
                 push!(all_dfs, df)
-                println("Downloaded $date_str: $(nrow(df)) rows")
+                total_rows += nrow(df)
+                print("\r[$idx/$total_files] ($progress_pct%) Downloaded $date_str: $(nrow(df)) rows (total: $total_rows)")
             end
             
             close(zip_reader)
             
         catch e
             if isa(e, HTTP.Exceptions.StatusError) && e.status == 404
-                @warn "File not found (404): $url"
+                print("\r[$idx/$total_files] ($progress_pct%) $date_str: not found (404)                    ")
             else
-                @warn "Error downloading $date_str" exception=e
+                print("\r[$idx/$total_files] ($progress_pct%) $date_str: error - $(typeof(e))              ")
             end
         end
         
         # Rate limiting: sleep 0.75s between requests
         sleep(0.75)
     end
+    
+    println()  # New line after progress
     
     # Concatenate all DataFrames
     if isempty(all_dfs)
