@@ -1,6 +1,8 @@
 # Backtest.jl - Backtesting engine
 
 using Printf
+using CSV
+using DataFrames
 
 # get_keys fallback - should be defined in Utils.jl or Core.jl
 if !isdefined(@__MODULE__, :get_keys)
@@ -451,6 +453,12 @@ Wrapper function for backtesting with analysis and plotting.
 - `ticks::Matrix{Float64}`: Tick data matrix
 - `live_config::Dict`: Live trading configuration
 - `plot::String`: Whether to plot results ("True" or "False")
+
+# Returns
+- `fills::Vector{Dict}`: All fills from backtest
+- `stats::Vector{Dict}`: Statistics snapshots
+- `did_finish::Bool`: Whether backtest completed successfully
+- `result::Dict`: Analysis results (if fills exist)
 """
 function plot_wrap(bc::Dict, ticks::Matrix{Float64}, live_config::Dict, plot::String="True")
     n_days = Jitted.round_((ticks[end, 3] - ticks[1, 3]) / (1000 * 60 * 60 * 24), 0.1)
@@ -464,13 +472,48 @@ function plot_wrap(bc::Dict, ticks::Matrix{Float64}, live_config::Dict, plot::St
     
     if isempty(fills)
         println("no fills")
-        return
+        return fills, stats, did_finish, Dict{String,Any}()
     end
     
-    # TODO: Implement analyze_fills and plotting integration
-    # This would require porting analyze.py and plotting.py
     println("Backtest completed with $(length(fills)) fills")
     println("Did finish: $did_finish")
     
-    return fills, stats, did_finish
+    # Analyze fills and samples
+    println("Analyzing results...")
+    fdf, sdf, result = analyze_backtest(fills, stats, config)
+    
+    # Store result in config for plotting
+    config["result"] = result
+    
+    # Create output directory with timestamp
+    timestamp_str = replace(ts_to_date(time())[1:19], ":" => "")
+    plots_dirpath = get(config, "plots_dirpath", "plots/")
+    output_dir = joinpath(plots_dirpath, timestamp_str, "")
+    mkpath(output_dir)
+    config["plots_dirpath"] = output_dir
+    
+    # Add metadata to config for plotting
+    config["start_date"] = get(bc, "start_date", "")
+    config["end_date"] = get(bc, "end_date", "")
+    
+    # Save fills to CSV if plotting
+    if plot == "True"
+        println("Saving fills to CSV...")
+        fills_csv_path = joinpath(output_dir, "fills.csv")
+        CSV.write(fills_csv_path, fdf)
+        println("Fills saved to $fills_csv_path")
+    end
+    
+    # Create tick DataFrame for plotting
+    df = DataFrame(
+        price = ticks[:, 1],
+        buyer_maker = ticks[:, 2],
+        timestamp = ticks[:, 3]
+    )
+    
+    # Generate plots
+    println("Dumping plots...")
+    dump_plots(config, fdf, df, plot)
+    
+    return fills, stats, did_finish, result
 end
