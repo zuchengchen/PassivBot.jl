@@ -2,6 +2,8 @@
 
 This file is for agentic coding assistants working in this repository.
 
+> **📌 Note**: This project is converted from the Python version at `/home/czc/projects/working/stock/passivbot3.5.6`. Some functionality may be incomplete. If you need to add or fix features, please refer to the Python version as reference.
+
 ## Project Overview
 
 PassivBot.jl is a high-performance cryptocurrency trading bot for Binance Futures, written in Julia. It's a complete port of the Python passivbot with 100% feature parity and 5-10x performance improvements.
@@ -272,6 +274,43 @@ end
 ---
 
 ## Git and Files
+
+### Commit Rule (MANDATORY)
+
+**After completing any file or code modification, you MUST commit the changes immediately.**
+
+Workflow:
+1. Complete the modification
+2. Run `git add <modified_files>`
+3. Commit with a clear message describing what was changed
+
+Commit message format:
+```
+<type>: <brief description>
+
+- <specific change 1>
+- <specific change 2>
+- ...
+```
+
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `refactor`: Code refactoring
+- `docs`: Documentation changes
+- `style`: Code style/formatting
+- `test`: Test additions or modifications
+- `chore`: Maintenance tasks
+
+Example:
+```bash
+git add src/Core.jl
+git commit -m "fix: correct position calculation in update_position!
+
+- Fixed rounding error in qty calculation
+- Added boundary check for leverage
+- Updated related docstring"
+```
 
 ### .gitignore
 - `api-keys.json` - Never commit
