@@ -265,38 +265,166 @@ end
 """
     get_ticks(downloader::Downloader, use_cache::Bool=true) -> Matrix{Float64}
 
-Get historical tick data, either from cache or by downloading.
+Get historical tick data with smart caching and incremental download.
+
+If cached data exists:
+- Check if it covers the requested date range
+- Only download missing data (before/after cached range)
+- Merge and re-cache
+
 Returns matrix with columns: [price, buyer_maker, timestamp]
 """
 function get_ticks(downloader::Downloader, use_cache::Bool=true)
+    cached_ticks = nothing
+    cached_start_date = nothing
+    cached_end_date = nothing
+    
+    # Convert requested range to dates for comparison
+    requested_start_date = Date(downloader.config["start_date"])
+    requested_end_date = downloader.config["end_date"] == -1 ? today() : Date(downloader.config["end_date"])
+    
     # Try to load from cache
     if use_cache && isfile(downloader.tick_filepath)
         println("Loading ticks from cache: $(downloader.tick_filepath)")
         try
-            ticks = deserialize(downloader.tick_filepath)
-            println("Loaded $(size(ticks, 1)) ticks from cache")
-            return ticks
+            cached_ticks = deserialize(downloader.tick_filepath)
+            if !isempty(cached_ticks)
+                # Get date range of cached data
+                cached_start_ts = Int(cached_ticks[1, 3])
+                cached_end_ts = Int(cached_ticks[end, 3])
+                cached_start_date = Date(ts_to_date(cached_start_ts))
+                cached_end_date = Date(ts_to_date(cached_end_ts))
+                
+                println("Cached data: $(size(cached_ticks, 1)) ticks")
+                println("  Range: $cached_start_date to $cached_end_date")
+                
+                # Check if cache fully covers requested range (by date)
+                if cached_start_date <= requested_start_date && cached_end_date >= requested_end_date
+                    println("Cache fully covers requested range, no download needed")
+                    # Filter to requested range
+                    mask = (cached_ticks[:, 3] .>= downloader.start_time) .& (cached_ticks[:, 3] .<= downloader.end_time)
+                    return cached_ticks[mask, :]
+                end
+            end
         catch e
-            @warn "Failed to load cache, will download" exception=e
+            @warn "Failed to load cache, will download fresh" exception=e
+            cached_ticks = nothing
         end
     end
     
-    # Download data
-    println("Downloading tick data from Binance...")
-    df = download_ticks(downloader)
+    # Determine what needs to be downloaded
+    need_before = false
+    need_after = false
+    before_end_date = nothing
+    after_start_date = nothing
     
-    # Compress ticks
-    println("Compressing ticks...")
-    ticks = compress_ticks(df)
-    
-    # Cache the result
-    if !isempty(ticks)
-        mkpath(dirname(downloader.tick_filepath))
-        serialize(downloader.tick_filepath, ticks)
-        println("Cached $(size(ticks, 1)) ticks")
+    if cached_ticks !== nothing && !isempty(cached_ticks)
+        # Check if we need data before cached range (by date)
+        if requested_start_date < cached_start_date
+            need_before = true
+            before_end_date = string(cached_start_date - Day(1))
+            println("Need to download data BEFORE cache: $(downloader.config["start_date"]) to $before_end_date")
+        end
+        
+        # Check if we need data after cached range (by date)
+        if requested_end_date > cached_end_date
+            need_after = true
+            after_start_date = string(cached_end_date + Day(1))
+            println("Need to download data AFTER cache: $after_start_date to $(downloader.config["end_date"])")
+        end
+        
+        if !need_before && !need_after
+            # Cache covers everything, just filter
+            mask = (cached_ticks[:, 3] .>= downloader.start_time) .& (cached_ticks[:, 3] .<= downloader.end_time)
+            return cached_ticks[mask, :]
+        end
+    else
+        # No cache, download everything
+        println("No cache found, downloading full range...")
     end
     
-    return ticks
+    # Download missing data
+    all_dfs = DataFrame[]
+    
+    if cached_ticks === nothing || isempty(cached_ticks)
+        # Download full range
+        println("Downloading tick data from Binance...")
+        df = download_ticks(downloader)
+        if !isempty(df)
+            push!(all_dfs, df)
+        end
+    else
+        # Incremental download
+        if need_before
+            println("\n--- Downloading data BEFORE cache ---")
+            before_downloader = Downloader(merge(downloader.config, Dict{String,Any}(
+                "start_date" => downloader.config["start_date"],
+                "end_date" => before_end_date,
+                "session_name" => downloader.config["session_name"] * "_before"
+            )))
+            df_before = download_ticks(before_downloader)
+            if !isempty(df_before)
+                push!(all_dfs, df_before)
+            end
+        end
+        
+        if need_after
+            println("\n--- Downloading data AFTER cache ---")
+            after_downloader = Downloader(merge(downloader.config, Dict{String,Any}(
+                "start_date" => after_start_date,
+                "end_date" => downloader.config["end_date"],
+                "session_name" => downloader.config["session_name"] * "_after"
+            )))
+            df_after = download_ticks(after_downloader)
+            if !isempty(df_after)
+                push!(all_dfs, df_after)
+            end
+        end
+    end
+    
+    # Compress new data
+    new_ticks = nothing
+    if !isempty(all_dfs)
+        combined_df = vcat(all_dfs...)
+        sort!(combined_df, :timestamp)
+        println("\nCompressing $(nrow(combined_df)) new ticks...")
+        new_ticks = compress_ticks(combined_df)
+        println("Compressed to $(size(new_ticks, 1)) ticks")
+    end
+    
+    # Merge with cached data
+    final_ticks = nothing
+    if cached_ticks !== nothing && !isempty(cached_ticks) && new_ticks !== nothing && !isempty(new_ticks)
+        println("Merging cached and new data...")
+        final_ticks = vcat(cached_ticks, new_ticks)
+        # Sort by timestamp and remove duplicates
+        final_ticks = final_ticks[sortperm(final_ticks[:, 3]), :]
+        # Remove duplicates (same timestamp)
+        unique_mask = vcat([true], diff(final_ticks[:, 3]) .> 0)
+        final_ticks = final_ticks[unique_mask, :]
+        println("Merged total: $(size(final_ticks, 1)) ticks")
+    elseif new_ticks !== nothing && !isempty(new_ticks)
+        final_ticks = new_ticks
+    elseif cached_ticks !== nothing && !isempty(cached_ticks)
+        final_ticks = cached_ticks
+    else
+        return Matrix{Float64}(undef, 0, 3)
+    end
+    
+    # Update cache with merged data
+    if final_ticks !== nothing && !isempty(final_ticks)
+        mkpath(dirname(downloader.tick_filepath))
+        serialize(downloader.tick_filepath, final_ticks)
+        println("Updated cache: $(size(final_ticks, 1)) ticks")
+        println("  Range: $(ts_to_date(Int(final_ticks[1, 3]))) to $(ts_to_date(Int(final_ticks[end, 3])))")
+    end
+    
+    # Filter to requested range
+    mask = (final_ticks[:, 3] .>= downloader.start_time) .& (final_ticks[:, 3] .<= downloader.end_time)
+    result = final_ticks[mask, :]
+    println("Returning $(size(result, 1)) ticks for requested range")
+    
+    return result
 end
 
 """
