@@ -123,16 +123,39 @@ function download_ticks(downloader::Downloader)::DataFrame
             url = "$(downloader.daily_base_url)$(symbol)/$(symbol)-aggTrades-$(date_str).zip"
         end
         
-        # Show progress
-        progress_pct = round(idx / total_files * 100, digits=1)
-        print("\r[$idx/$total_files] ($progress_pct%) Downloading $date_str...                    ")
-        
         try
-            # Download ZIP file with timeout
-            response = HTTP.get(url, readtimeout=30, connect_timeout=10)
+            # First, get content length with HEAD request
+            head_response = HTTP.head(url, readtimeout=10, connect_timeout=5)
+            content_length = parse(Int, HTTP.header(head_response, "Content-Length", "0"))
+            
+            # Download with progress bar
+            downloaded_bytes = 0
+            chunks = UInt8[]
+            
+            HTTP.open("GET", url, readtimeout=60, connect_timeout=10) do http
+                while !eof(http)
+                    chunk = readavailable(http)
+                    append!(chunks, chunk)
+                    downloaded_bytes += length(chunk)
+                    
+                    # Update progress bar
+                    if content_length > 0
+                        pct = min(100, round(Int, downloaded_bytes / content_length * 100))
+                        bar_width = 30
+                        filled = round(Int, bar_width * pct / 100)
+                        bar = "█" ^ filled * "░" ^ (bar_width - filled)
+                        size_mb = round(downloaded_bytes / 1024 / 1024, digits=2)
+                        total_mb = round(content_length / 1024 / 1024, digits=2)
+                        print("\r[$idx/$total_files] $date_str |$bar| $pct% ($size_mb/$total_mb MB)    ")
+                    else
+                        size_mb = round(downloaded_bytes / 1024 / 1024, digits=2)
+                        print("\r[$idx/$total_files] $date_str: $size_mb MB downloaded...    ")
+                    end
+                end
+            end
             
             # Read ZIP from memory
-            zip_data = IOBuffer(response.body)
+            zip_data = IOBuffer(chunks)
             zip_reader = ZipFile.Reader(zip_data)
             
             # Read first (and only) file in ZIP
@@ -154,16 +177,16 @@ function download_ticks(downloader::Downloader)::DataFrame
                 
                 push!(all_dfs, df)
                 total_rows += nrow(df)
-                print("\r[$idx/$total_files] ($progress_pct%) Downloaded $date_str: $(nrow(df)) rows (total: $total_rows)")
+                print("\r[$idx/$total_files] $date_str ✓ $(nrow(df)) rows (total: $total_rows)                    \n")
             end
             
             close(zip_reader)
             
         catch e
             if isa(e, HTTP.Exceptions.StatusError) && e.status == 404
-                print("\r[$idx/$total_files] ($progress_pct%) $date_str: not found (404)                    ")
+                print("\r[$idx/$total_files] $date_str ✗ not found (404)                                        \n")
             else
-                print("\r[$idx/$total_files] ($progress_pct%) $date_str: error - $(typeof(e))              ")
+                print("\r[$idx/$total_files] $date_str ✗ error: $(typeof(e))                                    \n")
             end
         end
         
@@ -171,7 +194,7 @@ function download_ticks(downloader::Downloader)::DataFrame
         sleep(0.75)
     end
     
-    println()  # New line after progress
+    println()  # Extra line after all downloads
     
     # Concatenate all DataFrames
     if isempty(all_dfs)
