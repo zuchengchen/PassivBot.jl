@@ -1,0 +1,44 @@
+gain percentage -93.3525%
+average_daily_gain percentage -100.0%
+annual return -1.0
+closest_liq percentage 0.3838%
+starting balance 1000.0
+n_days 0.186881
+returns_daily_obj -0.065354
+final_equity 66.475293
+sharpe_ratio_weekly 0.0
+n_closes 17.0
+returns_daily -0.851498
+sharpe_ratio_monthly 0.0
+n_fills 98.0
+sharpe_ratio_daily_obj 0.0
+n_stop_loss_entries 0.0
+n_initial_entries 18.0
+n_entries 80.0
+profit_sum 40.24726
+n_reentries 62.0
+VWR_daily -0.851498
+returns_monthly -1.0
+starting_balance 1000.0
+max_hrs_no_fills 1.109194
+VWR_daily_obj -0.065354
+VWR_weekly -0.999998
+max_drawdown 0.218868
+VWR_yearly -1.0
+n_stop_loss_closes 0.0
+max_hrs_no_fills_long 1.109194
+max_hrs_no_fills_shrt 0.0
+fee_sum -7.038807
+returns_yearly -1.0
+biggest_psize 346.6
+max_hrs_no_fills_same_side 1.109194
+loss_sum -966.73316
+objective 0.0
+net_pnl_plus_fees -933.524707
+sharpe_ratio_daily 0.0
+n_normal_closes 17.0
+returns_weekly -0.999998
+VWR_monthly -1.0
+sharpe_ratio_yearly 0.0
+average_daily_gain_obj 0.0
+long: true, short: false
