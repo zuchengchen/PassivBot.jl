@@ -391,8 +391,7 @@ function calc_available_margin(
         used_margin += calc_cost(shrt_psize, shrt_pprice) / leverage
     end
     
-    # Apply 0.9 safety factor to prevent margin calls
-    return max(0.0, (equity - used_margin) * 0.9)
+    return max(0.0, equity - used_margin)
 end
 
 # ============================================================================
