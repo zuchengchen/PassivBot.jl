@@ -393,7 +393,8 @@ function create_orders!(bot::AbstractBot, orders_to_create::Vector)
     # Sort by quantity
     sorted_orders = sort(orders_to_create, by=x -> x["qty"])
     
-    # Filter orders based on available margin
+    # Filter orders based on available margin (only for non-reduce_only orders)
+    # reduce_only orders (close/take-profit) don't require additional margin
     available_margin = get(bot.position, "available_margin", 0.0)
     leverage = bot.config["leverage"]
     
@@ -403,23 +404,31 @@ function create_orders!(bot::AbstractBot, orders_to_create::Vector)
     skipped_orders = 0
     
     for oc in sorted_orders
-        # Calculate margin needed for this order
-        order_cost = Jitted.calc_cost(oc["qty"], oc["price"])
-        order_margin = order_cost / leverage
-        total_margin_needed += order_margin
+        is_reduce_only = get(oc, "reduce_only", false)
         
-        # Check if we have enough margin for this order
-        if cumulative_margin_needed + order_margin <= available_margin
+        if is_reduce_only
+            # Close orders (reduce_only=true) don't need margin check
+            # They reduce position, not increase it
             push!(filtered_orders, oc)
-            cumulative_margin_needed += order_margin
         else
-            skipped_orders += 1
+            # Entry orders need margin check
+            order_cost = Jitted.calc_cost(oc["qty"], oc["price"])
+            order_margin = order_cost / leverage
+            total_margin_needed += order_margin
+            
+            # Check if we have enough margin for this order
+            if cumulative_margin_needed + order_margin <= available_margin
+                push!(filtered_orders, oc)
+                cumulative_margin_needed += order_margin
+            else
+                skipped_orders += 1
+            end
         end
     end
     
     if skipped_orders > 0
         print_([
-            "⚠️  Skipped $skipped_orders orders due to insufficient margin.",
+            "⚠️  Skipped $skipped_orders entry orders due to insufficient margin.",
             "Available: $(round(available_margin, digits=2)) USDT,",
             "Total needed: $(round(total_margin_needed, digits=2)) USDT,",
             "Placed: $(length(filtered_orders)) orders using $(round(cumulative_margin_needed, digits=2)) USDT"
