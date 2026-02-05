@@ -119,7 +119,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
     
     closest_liq = 1.0
     
-    prev_update_plus_delay = ticks[ema_span + 1, 3] + latency_simulation_ms
+    prev_update_plus_delay = ticks[ema_span, 3] + latency_simulation_ms
     update_triggered = false
     prev_update_plus_5sec = 0.0
     
@@ -128,10 +128,13 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
     stats_update(tick)
     
     # Main backtest loop - iterate through ticks starting from ema_span
+    # Note: In Julia (1-based), we start at ema_span+1 to match Python's 0-based ema_span
+    # But we need to adjust chunk_i to account for this
     for k in (ema_span + 1):size(ticks, 1)
         tick = ticks[k, :]
         
         # Update EMA/volatility chunks if needed
+        # chunk_i must be 1-based for Julia array access
         chunk_i = k - zc
         if chunk_i > length(ema_chunk_val)
             next_result = iterate(ema_std_iterator, ema_state)
@@ -410,7 +413,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                 fill["timestamp"] = tick[3]
                 fill["trade_id"] = k
                 fill["gain"] = fill["equity"] / config["starting_balance"]
-                fill["n_days"] = (tick[3] - ticks[ema_span + 1, 3]) / (1000 * 60 * 60 * 24)
+                fill["n_days"] = (tick[3] - ticks[ema_span, 3]) / (1000 * 60 * 60 * 24)
                 fill["closest_liq"] = closest_liq
                 
                 try
@@ -428,6 +431,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                 # Check for liquidation or zero balance
                 if balance <= 0.0 || occursin("liquidation", fill["type"])
                     return all_fills, stats, false
+                end
                 end
             end
             
