@@ -142,17 +142,27 @@ end
     get_updates(tg::TelegramBot)
 
 Get new updates from Telegram.
+Uses long-polling with retry mechanism for transient network errors.
 """
 function get_updates(tg::TelegramBot)
     url = "https://api.telegram.org/bot$(tg.token)/getUpdates"
 
     params = Dict(
         "offset" => tg.last_update_id + 1,
-        "timeout" => 10  # Reduced from 30 to 10 for faster error detection
+        "timeout" => 10  # Long-polling timeout
     )
 
     try
-        response = HTTP.get(url; query=params, retry=false, readtimeout=15)
+        # Enable retry for transient errors, with reasonable timeouts
+        # readtimeout should be > polling timeout to allow long-poll to complete
+        # connect_timeout handles initial connection issues
+        response = HTTP.get(url; 
+            query=params, 
+            retry=true,           # Enable retry for transient errors
+            retries=2,            # Max 2 retries
+            readtimeout=20,       # Allow time for long-poll (> timeout param)
+            connect_timeout=10    # Connection timeout
+        )
         data = JSON3.read(String(response.body))
 
         if data["ok"]
@@ -162,7 +172,14 @@ function get_updates(tg::TelegramBot)
             return []
         end
     catch e
-        @error "Failed to get Telegram updates" exception=(e, catch_backtrace())
+        # Classify errors: transient network errors are expected, use @warn
+        # Only use @error for unexpected issues
+        if e isa HTTP.ConnectError || e isa HTTP.RequestError
+            # Transient network errors - expected in long-polling scenarios
+            @warn "Telegram connection issue (will retry)" error_type=typeof(e).name.name
+        else
+            @error "Failed to get Telegram updates" exception=(e, catch_backtrace())
+        end
         return []
     end
 end
