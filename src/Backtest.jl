@@ -490,10 +490,11 @@ function plot_wrap(bc::Dict, ticks::Matrix{Float64}, live_config::Dict, plot::St
     # Store result in config for plotting
     config["result"] = result
     
-    # Create output directory with timestamp
+    # Create output directory: backtest_results/<symbol>/<timestamp>/
     timestamp_str = replace(ts_to_date(time())[1:19], ":" => "")
-    plots_dirpath = get(config, "plots_dirpath", "plots/")
-    output_dir = joinpath(plots_dirpath, timestamp_str, "")
+    symbol = get(config, "symbol", "UNKNOWN")
+    base_dir = get(config, "plots_dirpath", "backtest_results")
+    output_dir = joinpath(base_dir, symbol, timestamp_str, "")
     mkpath(output_dir)
     config["plots_dirpath"] = output_dir
     

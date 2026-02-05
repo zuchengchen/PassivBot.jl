@@ -19,8 +19,9 @@ export plot_position_sizes, plot_average_daily_gain
 Generate and save all backtest plots.
 """
 function dump_plots(result::Dict{String,Any}, fdf::DataFrame, df::DataFrame, plot::String="True")
-    # Set plot defaults
-    gr()  # Use GR backend
+    # Set GR backend in headless mode (no display, only save to file)
+    ENV["GKSwstype"] = "100"  # Headless mode - no window display
+    gr()
     default(size=(2900, 1800), dpi=100)
     
     # Calculate metrics

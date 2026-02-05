@@ -36,7 +36,7 @@ function parse_commandline()
             action = :store_true
         "--output", "-o"
             help = "Output directory for plots"
-            default = "plots"
+            default = "backtest_results"
         "--symbol", "-s"
             help = "Override symbol from config"
             default = nothing
