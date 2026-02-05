@@ -432,7 +432,6 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                 if balance <= 0.0 || occursin("liquidation", fill["type"])
                     return all_fills, stats, false
                 end
-                end
             end
             
             if do_print

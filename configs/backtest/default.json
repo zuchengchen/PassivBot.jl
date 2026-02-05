@@ -2,6 +2,7 @@
     "comment": "Backtest configuration for PassivBot.jl",
     "exchange": "binance",
     "symbol": "BTCUSDT",
+    "user": "bot4",
     "starting_balance": 1000.0,
     "start_date": "2023-01-01",
     "end_date": "2023-12-31",

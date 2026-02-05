@@ -42,3 +42,6 @@ VWR_monthly -1.0
 sharpe_ratio_yearly 0.0
 average_daily_gain_obj 0.0
 long: true, short: false
+
+
+

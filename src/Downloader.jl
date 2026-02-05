@@ -64,13 +64,16 @@ mutable struct Downloader
         end
         
         # Parse end_date
-        d.end_time = config["end_date"]
-        if d.end_time != -1
+        end_date_val = config["end_date"]
+        if end_date_val == -1 || end_date_val == "-1"
+            d.end_time = -1
+        else
             try
-                end_dt = DateTime(string(d.end_time))
+                end_dt = DateTime(string(end_date_val))
                 d.end_time = Int(round(datetime2unix(end_dt) * 1000))
             catch e
-                println("Unrecognized date format for end time.")
+                println("Unrecognized date format for end time: $e")
+                d.end_time = -1
             end
         end
         
@@ -429,13 +432,14 @@ function download_ticks(downloader::Downloader)
     
     # Process existing files and fill gaps
     for f in filenames
+        first_time = typemax(Int64)
+        last_time = typemax(Int64)
         try
             parts = split(replace(f, ".csv" => ""), "_")
             first_time = parse(Int64, parts[3])
             last_time = parse(Int64, parts[4])
         catch
-            first_time = typemax(Int64)
-            last_time = typemax(Int64)
+            # Keep default values
         end
         
         if (last_time >= downloader.start_time && 
@@ -566,8 +570,11 @@ function download_ticks(downloader::Downloader)
         end
         
         if first_time >= downloader.start_time || last_time >= downloader.start_time
-            prev_last_id = last_id
-            prev_last_time = last_time
+            # Only update prev_last_id/time if file is within requested range
+            if downloader.end_time == -1 || first_time <= downloader.end_time
+                prev_last_id = last_id
+                prev_last_time = last_time
+            end
         end
     end
     
@@ -676,10 +683,12 @@ function download_ticks(downloader::Downloader)
                 if !isempty(df) && ((df.trade_id[1] % TRADE_ID_BATCH_SIZE == 0 && nrow(df) >= TRADE_ID_BATCH_SIZE) ||
                     df.trade_id[1] % TRADE_ID_BATCH_SIZE != 0)
                     
-                    batch_starts = findall(id -> id % TRADE_ID_BATCH_SIZE == 0, df.trade_id)
-                    for (idx, batch_idx) in enumerate(batch_starts)
-                        if batch_idx != 1
-                            batch_start_id = df.trade_id[batch_idx]
+                    # Find trade IDs that are batch boundaries
+                    batch_boundary_ids = filter(id -> id % TRADE_ID_BATCH_SIZE == 0, df.trade_id)
+                    for batch_start_id in batch_boundary_ids
+                        # Find the row index for this batch boundary
+                        batch_idx = findfirst(==(batch_start_id), df.trade_id)
+                        if batch_idx !== nothing && batch_idx > 1
                             batch_df = df[(df.trade_id .>= batch_start_id - TRADE_ID_BATCH_SIZE) .& 
                                          (df.trade_id .< batch_start_id), :]
                             save_dataframe(downloader, batch_df, "", true)
@@ -815,6 +824,10 @@ function prepare_files(downloader::Downloader; single_file::Bool=false)
     
     filenames = filenames[start_index:end_index]
     
+    if isempty(filenames)
+        error("No data files found for the specified date range ($(ts_to_date(Float64(downloader.start_time) / 1000)) to $(ts_to_date(Float64(downloader.end_time) / 1000))). The symbol may not have existed during this period, or data download failed.")
+    end
+    
     chunks = DataFrame[]
     df = DataFrame()
     
@@ -875,7 +888,7 @@ function prepare_files(downloader::Downloader; single_file::Bool=false)
     # Create group IDs where price or is_buyer_maker changes
     n = nrow(df)
     if n == 0
-        return
+        error("No tick data found for the specified date range. Please check if data exists for $(ts_to_date(Float64(downloader.start_time) / 1000)) to $(ts_to_date(Float64(downloader.end_time) / 1000))")
     end
     
     # Identify where (price, is_buyer_maker) changes

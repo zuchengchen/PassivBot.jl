@@ -98,13 +98,16 @@ function main()
     
     # Set output directory
     backtest_config["plots_dirpath"] = output_dir
-    backtest_config["caches_dirpath"] = get(backtest_config, "caches_dirpath", "data/caches")
-    
-    # Generate session name from symbol and dates
+    # Generate session name from dates (matching Python format)
     symbol = backtest_config["symbol"]
     start_date = backtest_config["start_date"]
     end_date = backtest_config["end_date"]
-    backtest_config["session_name"] = "$(symbol)_$(start_date)_$(end_date)"
+    backtest_config["session_name"] = "$(start_date)_$(end_date)"
+    
+    # Set caches_dirpath to match Python structure
+    base_dirpath = joinpath("backtests", backtest_config["exchange"], symbol)
+    backtest_config["caches_dirpath"] = joinpath(base_dirpath, "caches")
+    backtest_config["plots_dirpath"] = joinpath(base_dirpath, "plots")
     
     # Add required exchange-specific parameters
     if !haskey(backtest_config, "qty_step")
@@ -152,7 +155,7 @@ function main()
     # Create Downloader and get tick data
     println("Loading tick data...")
     downloader = Downloader(backtest_config)
-    ticks = get_ticks(downloader, use_cache)
+    ticks = get_ticks(downloader, single_file=true)
     
     if isempty(ticks) || size(ticks, 1) == 0
         error("No tick data available for the specified date range")
