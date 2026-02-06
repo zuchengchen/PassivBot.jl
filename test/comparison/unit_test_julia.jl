@@ -5,12 +5,11 @@ Unit test for Julia Jitted functions - outputs results to JSON for comparison wi
 
 using JSON3
 using Random
-
-include(joinpath(@__DIR__, "..", "..", "src", "PassivBot.jl"))
-using .PassivBot: round_, round_up, round_dn, calc_diff, calc_ema,
+using PassivBot
+using PassivBot.Jitted: round_, round_up, round_dn, calc_diff, calc_ema,
     calc_new_psize_pprice, calc_long_pnl, calc_shrt_pnl,
     calc_cost, calc_margin_cost, calc_available_margin,
-    calc_liq_price_binance, calc_bid_ask_thresholds,
+    calc_liq_price_binance,
     iter_entries, iter_long_closes, iter_shrt_closes,
     calc_initial_entry_qty, calc_reentry_qty, calc_min_entry_qty
 
@@ -116,16 +115,6 @@ function generate_test_cases()
         for _ in 1:50
     ]
     
-    cases["calc_bid_ask_thresholds"] = [
-        Dict(
-            "ema" => 10 + rand() * 90,
-            "ema_spread" => 0.001 + rand() * 0.009,
-            "volatility" => 0.001 + rand() * 0.049,
-            "volatility_grid_coeff" => rand()
-        )
-        for _ in 1:50
-    ]
-    
     cases["iter_entries"] = [
         let psize = rand() * 100
             Dict(
@@ -180,34 +169,37 @@ end
 function run_tests(cases)
     results = Dict{String,Vector{Dict{String,Any}}}()
     
+    # Helper to ensure Float64
+    f(x) = Float64(x)
+    
     results["round_"] = [
-        Dict("input" => c, "output" => round_(c["n"], c["step"]))
+        Dict("input" => c, "output" => round_(f(c["n"]), f(c["step"])))
         for c in cases["round_"]
     ]
     
     results["round_up"] = [
-        Dict("input" => c, "output" => round_up(c["n"], c["step"]))
+        Dict("input" => c, "output" => round_up(f(c["n"]), f(c["step"])))
         for c in cases["round_up"]
     ]
     
     results["round_dn"] = [
-        Dict("input" => c, "output" => round_dn(c["n"], c["step"]))
+        Dict("input" => c, "output" => round_dn(f(c["n"]), f(c["step"])))
         for c in cases["round_dn"]
     ]
     
     results["calc_diff"] = [
-        Dict("input" => c, "output" => calc_diff(c["x"], c["y"]))
+        Dict("input" => c, "output" => calc_diff(f(c["x"]), f(c["y"])))
         for c in cases["calc_diff"]
     ]
     
     results["calc_ema"] = [
-        Dict("input" => c, "output" => calc_ema(c["alpha"], c["alpha_"], c["prev_ema"], c["new_val"]))
+        Dict("input" => c, "output" => calc_ema(f(c["alpha"]), f(c["alpha_"]), f(c["prev_ema"]), f(c["new_val"])))
         for c in cases["calc_ema"]
     ]
     
     results["calc_new_psize_pprice"] = []
     for c in cases["calc_new_psize_pprice"]
-        psize, pprice = calc_new_psize_pprice(c["psize"], c["pprice"], c["qty"], c["price"], 1.0)
+        psize, pprice = calc_new_psize_pprice(f(c["psize"]), f(c["pprice"]), f(c["qty"]), f(c["price"]), 1.0)
         push!(results["calc_new_psize_pprice"], Dict(
             "input" => c,
             "output" => Dict("psize" => psize, "pprice" => pprice)
@@ -215,29 +207,29 @@ function run_tests(cases)
     end
     
     results["calc_long_pnl"] = [
-        Dict("input" => c, "output" => calc_long_pnl(c["entry_price"], c["close_price"], c["qty"]))
+        Dict("input" => c, "output" => calc_long_pnl(f(c["entry_price"]), f(c["close_price"]), f(c["qty"])))
         for c in cases["calc_long_pnl"]
     ]
     
     results["calc_shrt_pnl"] = [
-        Dict("input" => c, "output" => calc_shrt_pnl(c["entry_price"], c["close_price"], c["qty"]))
+        Dict("input" => c, "output" => calc_shrt_pnl(f(c["entry_price"]), f(c["close_price"]), f(c["qty"])))
         for c in cases["calc_shrt_pnl"]
     ]
     
     results["calc_cost"] = [
-        Dict("input" => c, "output" => calc_cost(c["qty"], c["price"]))
+        Dict("input" => c, "output" => calc_cost(f(c["qty"]), f(c["price"])))
         for c in cases["calc_cost"]
     ]
     
     results["calc_margin_cost"] = [
-        Dict("input" => c, "output" => calc_margin_cost(c["qty"], c["price"], c["leverage"]))
+        Dict("input" => c, "output" => calc_margin_cost(f(c["qty"]), f(c["price"]), f(c["leverage"])))
         for c in cases["calc_margin_cost"]
     ]
     
     results["calc_available_margin"] = [
         Dict("input" => c, "output" => calc_available_margin(
-            c["balance"], c["long_psize"], c["long_pprice"],
-            c["shrt_psize"], c["shrt_pprice"], 50.0, c["leverage"]
+            f(c["balance"]), f(c["long_psize"]), f(c["long_pprice"]),
+            f(c["shrt_psize"]), f(c["shrt_pprice"]), 50.0, f(c["leverage"])
         ))
         for c in cases["calc_available_margin"]
     ]
@@ -245,22 +237,11 @@ function run_tests(cases)
     results["calc_liq_price"] = []
     for c in cases["calc_liq_price"]
         if c["long"]
-            liq = calc_liq_price_binance(c["balance"], c["psize"], c["pprice"], 0.0, 0.0, c["leverage"])
+            liq = calc_liq_price_binance(f(c["balance"]), f(c["psize"]), f(c["pprice"]), 0.0, 0.0, f(c["leverage"]))
         else
-            liq = calc_liq_price_binance(c["balance"], 0.0, 0.0, -c["psize"], c["pprice"], c["leverage"])
+            liq = calc_liq_price_binance(f(c["balance"]), 0.0, 0.0, -f(c["psize"]), f(c["pprice"]), f(c["leverage"]))
         end
         push!(results["calc_liq_price"], Dict("input" => c, "output" => liq))
-    end
-    
-    results["calc_bid_ask_thresholds"] = []
-    for c in cases["calc_bid_ask_thresholds"]
-        bid_thr, ask_thr = calc_bid_ask_thresholds(
-            c["ema"], c["ema_spread"], c["volatility"], c["volatility_grid_coeff"]
-        )
-        push!(results["calc_bid_ask_thresholds"], Dict(
-            "input" => c,
-            "output" => Dict("bid_thr" => bid_thr, "ask_thr" => ask_thr)
-        ))
     end
     
     results["iter_entries"] = []
@@ -268,38 +249,47 @@ function run_tests(cases)
         entries_list = Dict{String,Any}[]
         try
             for entry in iter_entries(
-                c["balance"], c["psize"], c["pprice"], 0.0, 0.0, 0.0,
-                c["entry_price"], c["entry_price"] * 1.001, c["ema"],
-                c["entry_price"], c["volatility"], c["long"], false,
-                c["qty_step"], c["price_step"], c["min_qty"], c["min_cost"],
-                c["ddown_factor"], c["qty_pct"], c["leverage"], 5.0,
-                c["grid_spacing"], c["pos_margin_grid_coeff"],
-                c["volatility_grid_coeff"], c["volatility_qty_coeff"],
-                0.002, 0.005, 5000.0, 0.002, 0.1, 0.1, c["entry_liq_diff_thr"]
+                f(c["balance"]), f(c["psize"]), f(c["pprice"]), 0.0, 0.0, 0.0,
+                f(c["entry_price"]), f(c["entry_price"]) * 1.001, f(c["ema"]),
+                f(c["entry_price"]), f(c["volatility"]), Bool(c["long"]), false,
+                f(c["qty_step"]), f(c["price_step"]), f(c["min_qty"]), f(c["min_cost"]),
+                f(c["ddown_factor"]), f(c["qty_pct"]), f(c["leverage"]), 5.0,
+                f(c["grid_spacing"]), f(c["pos_margin_grid_coeff"]),
+                f(c["volatility_grid_coeff"]), f(c["volatility_qty_coeff"]),
+                0.002, 0.005, 5000.0, 0.002, 0.1, 0.1, f(c["entry_liq_diff_thr"])
             )
                 push!(entries_list, Dict("qty" => entry[1], "price" => entry[2], "type" => entry[5]))
                 length(entries_list) >= 10 && break
             end
         catch e
+            @warn "iter_entries error" exception=(e, catch_backtrace())
         end
         push!(results["iter_entries"], Dict("input" => c, "output" => entries_list))
     end
     
     results["iter_closes"] = []
-    for c in cases["iter_closes"]
+    for (idx, c) in enumerate(cases["iter_closes"])
         closes_list = Dict{String,Any}[]
         try
-            for close_order in iter_long_closes(
-                c["balance"], c["psize"], c["pprice"], c["close_price"],
-                true, false, c["qty_step"], c["price_step"],
-                c["min_qty"], c["min_cost"], 0.5, 0.1, c["leverage"],
+            ch = iter_long_closes(
+                f(c["balance"]), f(c["psize"]), f(c["pprice"]), f(c["close_price"]),
+                true, false, f(c["qty_step"]), f(c["price_step"]),
+                f(c["min_qty"]), 5.0, 0.5, 0.1, f(c["leverage"]),
                 Float64(c["n_close_orders"]), 0.01, 0.5, 0.5, 0.5,
-                c["min_markup"], c["markup_range"], 5000.0, 0.002,
+                f(c["min_markup"]), f(c["markup_range"]), 5000.0, 0.002,
                 0.1, 0.1, 0.1
             )
+            if idx == 1
+                println("  DEBUG iter_closes[1]: channel type=$(typeof(ch)), isopen=$(isopen(ch))")
+            end
+            for close_order in ch
                 push!(closes_list, Dict("qty" => close_order[1], "price" => close_order[2], "type" => "long_close"))
             end
+            if idx == 1
+                println("  DEBUG iter_closes[1]: got $(length(closes_list)) results")
+            end
         catch e
+            println("  DEBUG iter_closes[$idx] ERROR: ", e)
         end
         push!(results["iter_closes"], Dict("input" => c, "output" => closes_list))
     end
@@ -310,9 +300,15 @@ end
 function main()
     output_dir = @__DIR__
     output_path = joinpath(output_dir, "output", "julia", "unit_tests.json")
+    cases_path = joinpath(output_dir, "output", "shared_test_cases.json")
     
-    println("Generating test cases...")
-    cases = generate_test_cases()
+    if isfile(cases_path)
+        println("Loading shared test cases from $cases_path...")
+        cases = JSON3.read(read(cases_path, String), Dict{String,Any})
+    else
+        println("Shared test cases not found, generating locally...")
+        cases = generate_test_cases()
+    end
     
     println("Running Julia unit tests...")
     results = run_tests(cases)

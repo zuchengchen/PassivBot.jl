@@ -54,7 +54,9 @@ if [[ -z "$COMPARE_ONLY" ]]; then
             "$PROJECT_DIR/$CONFIG" \
             -s "$SYMBOL" \
             --start_date "$START_DATE" \
-            --end_date "$END_DATE"
+            --end_date "$END_DATE" \
+            -bc "configs/backtest/default.hjson" \
+            -oc "configs/optimize/default.hjson"
         echo ""
 
         echo ">>> Running Julia backtest..."

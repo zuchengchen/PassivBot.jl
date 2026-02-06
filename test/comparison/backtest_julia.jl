@@ -9,6 +9,7 @@ using Dates
 
 include(joinpath(@__DIR__, "..", "..", "src", "PassivBot.jl"))
 using .PassivBot
+using .PassivBot: Jitted
 
 function backtest_with_output(config::Dict, ticks::Matrix{Float64}, output_dir::String)
     ema_span = Int(round(config["ema_span"]))
@@ -84,11 +85,11 @@ function backtest_with_output(config::Dict, ticks::Matrix{Float64}, output_dir::
             chunk_i = k - zc
         end
         
-        if k % snapshot_interval == 0
+        if (k - 1) % snapshot_interval == 0
             upnl = long_psize != 0.0 || shrt_psize != 0.0 ? 
                 Jitted.calc_long_pnl(long_pprice, tick[1], long_psize) + Jitted.calc_shrt_pnl(shrt_pprice, tick[1], shrt_psize) : 0.0
             push!(state_snapshots, Dict{String,Any}(
-                "tick_index" => k,
+                "tick_index" => k - 1,
                 "timestamp" => tick[3],
                 "price" => tick[1],
                 "trigger" => "periodic",
@@ -287,8 +288,8 @@ function backtest_with_output(config::Dict, ticks::Matrix{Float64}, output_dir::
                 
                 fill["balance"] = balance
                 fill["timestamp"] = tick[3]
-                fill["trade_id"] = k
-                fill["tick_index"] = k
+                fill["trade_id"] = k - 1
+                fill["tick_index"] = k - 1
                 fill["gain"] = fill["equity"] / config["starting_balance"]
                 fill["n_days"] = (tick[3] - ticks[ema_span, 3]) / (1000 * 60 * 60 * 24)
                 fill["closest_liq"] = closest_liq
@@ -302,7 +303,7 @@ function backtest_with_output(config::Dict, ticks::Matrix{Float64}, output_dir::
                 push!(all_fills, fill)
                 
                 push!(state_snapshots, Dict{String,Any}(
-                    "tick_index" => k,
+                    "tick_index" => k - 1,
                     "timestamp" => tick[3],
                     "price" => tick[1],
                     "trigger" => "fill",
@@ -375,10 +376,27 @@ function main()
     )
     
     config = merge(bc_config, live_config)
-    config["session_name"] = replace(replace(config["start_date"], "-" => ""), ":" => "") * "_" * replace(replace(config["end_date"], "-" => ""), ":" => "")
+    config["session_name"] = config["start_date"] * "_" * config["end_date"]
     
     base_dirpath = joinpath("backtests", config["exchange"], config["symbol"])
     config["caches_dirpath"] = make_get_filepath(joinpath(base_dirpath, "caches", ""))
+    
+    # Load market specific settings
+    market_settings_path = joinpath(base_dirpath, "caches", "market_specific_settings.json")
+    if isfile(market_settings_path)
+        market_settings = JSON3.read(read(market_settings_path, String), Dict{String,Any})
+        for (k, v) in market_settings
+            if !haskey(config, k)
+                config[k] = v
+            end
+        end
+    else
+        # Fallback defaults
+        config["qty_step"] = get(config, "qty_step", 0.1)
+        config["price_step"] = get(config, "price_step", 0.001)
+        config["min_qty"] = get(config, "min_qty", 0.1)
+        config["min_cost"] = get(config, "min_cost", 5.0)
+    end
     
     println("Symbol: $(config["symbol"])")
     println("Start: $(config["start_date"])")
@@ -392,8 +410,21 @@ function main()
     println("Running backtest with $(size(ticks, 1)) ticks...")
     fills, stats, state_snapshots, did_finish = backtest_with_output(config, ticks, output_dir)
     
+    # Always save output (backtest may return early on liquidation)
+    mkpath(output_dir)
+    open(joinpath(output_dir, "fills.json"), "w") do f
+        JSON3.write(f, fills)
+    end
+    open(joinpath(output_dir, "states.json"), "w") do f
+        JSON3.write(f, state_snapshots)
+    end
+    open(joinpath(output_dir, "stats.json"), "w") do f
+        JSON3.write(f, stats)
+    end
+    
     println("Fills: $(length(fills))")
     println("State snapshots: $(length(state_snapshots))")
+    println("Did finish: $did_finish")
     println("Output saved to: $output_dir")
 end
 

@@ -326,8 +326,8 @@ async def main():
     parser.add_argument("--start_date", type=str, default="none", help="start date")
     parser.add_argument("--end_date", type=str, default="none", help="end date")
     parser.add_argument("-u", "--user", type=str, default="none", help="user")
-    parser.add_argument("-bc", "--backtest_config_path", type=str, default="configs/backtest/default.json")
-    parser.add_argument("-oc", "--optimize_config_path", type=str, default="configs/optimize/default.json")
+    parser.add_argument("-bc", "--backtest_config_path", type=str, default="configs/backtest/default.hjson")
+    parser.add_argument("-oc", "--optimize_config_path", type=str, default="configs/optimize/default.hjson")
     args = parser.parse_args()
 
     config = await prep_config(args)
@@ -346,8 +346,18 @@ async def main():
     print(f"Running backtest with {len(ticks)} ticks...")
     fills, stats, state_snapshots, did_finish = backtest_with_output(config, ticks, output_dir)
     
+    # Always save output (backtest_with_output may return early on liquidation)
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "fills.json"), 'w') as f:
+        json.dump(fills, f, indent=2, default=str)
+    with open(os.path.join(output_dir, "states.json"), 'w') as f:
+        json.dump(state_snapshots, f, indent=2, default=str)
+    with open(os.path.join(output_dir, "stats.json"), 'w') as f:
+        json.dump(stats, f, indent=2, default=str)
+    
     print(f"Fills: {len(fills)}")
     print(f"State snapshots: {len(state_snapshots)}")
+    print(f"Did finish: {did_finish}")
     print(f"Output saved to: {output_dir}")
 
 

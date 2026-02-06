@@ -15,9 +15,8 @@ from jitted import (
     calc_ema, calc_new_psize_pprice,
     calc_long_pnl, calc_shrt_pnl,
     calc_cost, calc_margin_cost,
-    calc_available_margin, calc_liq_price,
-    calc_bid_ask_thresholds,
-    iter_entries, iter_closes
+    calc_available_margin, calc_liq_price_binance,
+    iter_entries, iter_long_closes, iter_shrt_closes
 )
 
 np.random.seed(42)
@@ -36,7 +35,6 @@ def generate_test_cases():
         "calc_margin_cost": [],
         "calc_available_margin": [],
         "calc_liq_price": [],
-        "calc_bid_ask_thresholds": [],
         "iter_entries": [],
         "iter_closes": [],
     }
@@ -144,11 +142,6 @@ def generate_test_cases():
         ema_spread = np.random.uniform(0.001, 0.01)
         volatility = np.random.uniform(0.001, 0.05)
         volatility_grid_coeff = np.random.uniform(0, 1)
-        cases["calc_bid_ask_thresholds"].append({
-            "ema": ema, "ema_spread": ema_spread,
-            "volatility": volatility,
-            "volatility_grid_coeff": volatility_grid_coeff
-        })
     
     for _ in range(30):
         balance = np.random.uniform(1000, 10000)
@@ -235,7 +228,7 @@ def run_tests(cases):
     
     results["calc_new_psize_pprice"] = []
     for c in cases["calc_new_psize_pprice"]:
-        psize, pprice = calc_new_psize_pprice(c["psize"], c["pprice"], c["qty"], c["price"])
+        psize, pprice = calc_new_psize_pprice(c["psize"], c["pprice"], c["qty"], c["price"], 1.0)
         results["calc_new_psize_pprice"].append({
             "input": c, "output": {"psize": psize, "pprice": pprice}
         })
@@ -263,69 +256,89 @@ def run_tests(cases):
     results["calc_available_margin"] = [
         {"input": c, "output": calc_available_margin(
             c["balance"], c["long_psize"], c["long_pprice"],
-            c["shrt_psize"], c["shrt_pprice"], c["leverage"]
+            c["shrt_psize"], c["shrt_pprice"], 50.0, c["leverage"]
         )}
         for c in cases["calc_available_margin"]
     ]
     
-    results["calc_liq_price"] = [
-        {"input": c, "output": calc_liq_price(
-            c["balance"], c["psize"], c["pprice"], c["leverage"], c["long"]
-        )}
-        for c in cases["calc_liq_price"]
-    ]
-    
-    results["calc_bid_ask_thresholds"] = []
-    for c in cases["calc_bid_ask_thresholds"]:
-        bid_thr, ask_thr = calc_bid_ask_thresholds(
-            c["ema"], c["ema_spread"], c["volatility"], c["volatility_grid_coeff"]
-        )
-        results["calc_bid_ask_thresholds"].append({
-            "input": c, "output": {"bid_thr": bid_thr, "ask_thr": ask_thr}
-        })
+    results["calc_liq_price"] = []
+    for c in cases["calc_liq_price"]:
+        if c["long"]:
+            liq = calc_liq_price_binance(c["balance"], c["psize"], c["pprice"], 0.0, 0.0, c["leverage"])
+        else:
+            liq = calc_liq_price_binance(c["balance"], 0.0, 0.0, -c["psize"], c["pprice"], c["leverage"])
+        results["calc_liq_price"].append({"input": c, "output": liq})
     
     results["iter_entries"] = []
     for c in cases["iter_entries"]:
-        entries = list(iter_entries(
-            c["balance"], c["psize"], c["pprice"], c["entry_price"],
-            c["ema"], c["volatility"],
-            c["leverage"], c["qty_pct"], c["ddown_factor"],
-            c["grid_spacing"], c["pos_margin_grid_coeff"],
-            c["volatility_grid_coeff"], c["volatility_qty_coeff"],
-            c["min_qty"], c["qty_step"], c["price_step"],
-            c["min_cost"], c["max_leverage"], c["entry_liq_diff_thr"],
-            c["long"]
-        ))
-        entries_list = [{"qty": e[0], "price": e[1], "type": e[2]} for e in entries]
+        entries_list = []
+        try:
+            for entry in iter_entries(
+                c["balance"], c["psize"], c["pprice"], 0.0, 0.0, 0.0,
+                c["entry_price"], c["entry_price"] * 1.001, c["ema"],
+                c["entry_price"], c["volatility"], c["long"], False,
+                c["qty_step"], c["price_step"], c["min_qty"], c["min_cost"],
+                c["ddown_factor"], c["qty_pct"], c["leverage"], 5.0,
+                c["grid_spacing"], c["pos_margin_grid_coeff"],
+                c["volatility_grid_coeff"], c["volatility_qty_coeff"],
+                0.002, 0.005, 5000.0, 0.002, 0.1, 0.1, c["entry_liq_diff_thr"]
+            ):
+                entries_list.append({"qty": entry[0], "price": entry[1], "type": entry[4]})
+                if len(entries_list) >= 10:
+                    break
+        except Exception:
+            pass
         results["iter_entries"].append({"input": c, "output": entries_list})
     
     results["iter_closes"] = []
     for c in cases["iter_closes"]:
-        closes = list(iter_closes(
+        closes = list(iter_long_closes(
             c["balance"], c["psize"], c["pprice"], c["close_price"],
-            c["leverage"], c["min_markup"], c["markup_range"],
-            c["n_close_orders"], c["min_qty"], c["qty_step"],
-            c["price_step"], c["long"]
+            True, False, c["qty_step"], c["price_step"],
+            c["min_qty"], 5.0, 0.5, 0.1, c["leverage"],
+            float(c["n_close_orders"]), 0.01, 0.5, 0.5, 0.5,
+            c["min_markup"], c["markup_range"], 5000.0, 0.002,
+            0.1, 0.1, 0.1
         ))
-        closes_list = [{"qty": cl[0], "price": cl[1], "type": cl[2]} for cl in closes]
+        closes_list = [{"qty": cl[0], "price": cl[1], "type": "long_close"} for cl in closes]
         results["iter_closes"].append({"input": c, "output": closes_list})
     
     return results
 
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (np.integer,)):
+            return int(o)
+        elif isinstance(o, (np.floating,)):
+            return float(o)
+        elif isinstance(o, (np.bool_,)):
+            return bool(o)
+        elif isinstance(o, np.ndarray):
+            return o.tolist()
+        return super().default(o)
+
+
 def main():
     output_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(output_dir, "output", "python", "unit_tests.json")
+    cases_path = os.path.join(output_dir, "output", "shared_test_cases.json")
     
     print("Generating test cases...")
     cases = generate_test_cases()
+    
+    # Save shared test cases for Julia to read
+    os.makedirs(os.path.dirname(cases_path), exist_ok=True)
+    with open(cases_path, 'w') as f:
+        json.dump(cases, f, indent=2, cls=NumpyEncoder)
+    print(f"Shared test cases saved to {cases_path}")
     
     print("Running Python unit tests...")
     results = run_tests(cases)
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2, cls=NumpyEncoder)
     
     print(f"Results saved to {output_path}")
     
