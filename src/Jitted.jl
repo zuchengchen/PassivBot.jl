@@ -30,6 +30,34 @@ function round_dynamic(n::Float64, d::Int)::Float64
 end
 
 """
+    compress_float(n::Float64, d::Int)::String
+
+Compress a float to a short string representation.
+Rounds large numbers to integers, small numbers dynamically.
+Strips leading/trailing zeros for compactness.
+"""
+function compress_float(n::Float64, d::Int)::String
+    if n / 10.0^d >= 1.0
+        n = round(n)
+    else
+        n = round_dynamic(n, d)
+    end
+    nstr = string(n)
+    # Remove trailing zeros after decimal point, and the dot if nothing follows
+    if occursin('.', nstr)
+        nstr = rstrip(nstr, '0')
+        nstr = rstrip(nstr, '.')
+    end
+    # Compress leading zero: "0.123" -> ".123"
+    if startswith(nstr, "0.")
+        nstr = nstr[2:end]
+    elseif startswith(nstr, "-0.")
+        nstr = "-" * nstr[3:end]
+    end
+    return nstr
+end
+
+"""
     round_up(n::Float64, step::Float64, safety_rounding::Int=10)::Float64
 
 Round up to nearest step increment.
