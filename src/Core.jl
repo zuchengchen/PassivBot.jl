@@ -233,8 +233,13 @@ function init!(bot::AbstractBot)
     bot.xk = Dict{String, Float64}(
         k => Float64(bot.config[k]) for k in get_keys()
     )
-    # Note: fetch_fills will be implemented in exchange-specific subtype
-    # bot.fills = fetch_fills(bot)
+    # Fetch initial fills so first check_fills doesn't treat all as new
+    try
+        bot.fills = fetch_fills(bot)
+    catch e
+        @error "Error fetching initial fills" exception=(e, catch_backtrace())
+        bot.fills = Vector{Dict{String,Any}}()
+    end
 end
 
 """
@@ -275,6 +280,10 @@ end
 Update open orders from exchange
 """
 function update_open_orders!(bot::AbstractBot)
+    if bot.ts_locked["update_open_orders"] > bot.ts_released["update_open_orders"]
+        return
+    end
+    bot.ts_locked["update_open_orders"] = time()
     try
         # Note: fetch_open_orders will be implemented in exchange-specific subtype
         open_orders = fetch_open_orders(bot)
@@ -306,6 +315,10 @@ Update position from exchange
 Also updates open orders
 """
 function update_position!(bot::AbstractBot)
+    if bot.ts_locked["update_position"] > bot.ts_released["update_position"]
+        return
+    end
+    bot.ts_locked["update_position"] = time()
     try
         # Note: fetch_position will be implemented in exchange-specific subtype
         # Fetch position and update orders concurrently
@@ -390,6 +403,13 @@ end
 Create orders on exchange
 """
 function create_orders!(bot::AbstractBot, orders_to_create::Vector)
+    if isempty(orders_to_create)
+        return []
+    end
+    if bot.ts_locked["create_orders"] > bot.ts_released["create_orders"]
+        return []
+    end
+    bot.ts_locked["create_orders"] = time()
     # Sort by quantity
     sorted_orders = sort(orders_to_create, by=x -> x["qty"])
     
@@ -495,6 +515,13 @@ end
 Cancel orders on exchange
 """
 function cancel_orders!(bot::AbstractBot, orders_to_cancel::Vector)
+    if isempty(orders_to_cancel)
+        return []
+    end
+    if bot.ts_locked["cancel_orders"] > bot.ts_released["cancel_orders"]
+        return []
+    end
+    bot.ts_locked["cancel_orders"] = time()
     # Create tasks for concurrent execution
     deletions = []
     for oc in orders_to_cancel
@@ -840,6 +867,11 @@ function cancel_and_create!(bot::AbstractBot)
     update_position!(bot)
     sleep(0.005)
     
+    # Check if any non-decide lock is stuck (matching Python)
+    if any(bot.ts_locked[k] > bot.ts_released[k] for k in keys(bot.ts_locked) if k != "decide")
+        return []
+    end
+    
     try
         ideal_orders = calc_orders(bot)
         
@@ -900,6 +932,7 @@ end
 
 """
 Main decision function - creates and cancels orders
+Matches Python decide() flow: called on every tick, timeout check is internal.
 """
 function decide!(bot::AbstractBot)
     if get(bot.config, "stop_mode", nothing) !== nothing
@@ -908,6 +941,7 @@ function decide!(bot::AbstractBot)
     
     # Check if bid might have been taken
     if bot.price <= bot.highest_bid
+        bot.ts_locked["decide"] = time()
         print_(["bid maybe taken"], n=true)
         cancel_and_create!(bot)
         @async try
@@ -921,6 +955,7 @@ function decide!(bot::AbstractBot)
     
     # Check if ask might have been taken
     if bot.price >= bot.lowest_ask
+        bot.ts_locked["decide"] = time()
         print_(["ask maybe taken"], n=true)
         cancel_and_create!(bot)
         @async try
@@ -932,11 +967,15 @@ function decide!(bot::AbstractBot)
         return
     end
     
-    # Periodic update (called from websocket loop after timeout)
-    cancel_and_create!(bot)
-    bot.ts_released["decide"] = time()
+    # Periodic update based on timeout (matching Python branch 3)
+    if time() - bot.ts_locked["decide"] > DECIDE_TIMEOUT
+        bot.ts_locked["decide"] = time()
+        cancel_and_create!(bot)
+        bot.ts_released["decide"] = time()
+        return
+    end
     
-    # Print status
+    # Print status (fall-through path — no cancel_and_create, matching Python branch 4)
     if time() - bot.ts_released["print"] >= PRINT_THROTTLE_INTERVAL
         update_output_information!(bot)
     end
@@ -957,10 +996,18 @@ end
 Check for new fills and process them
 """
 function check_fills!(bot::AbstractBot)
+    # Lock guard: prevent re-entrant calls
+    if bot.ts_locked["check_fills"] > bot.ts_released["check_fills"]
+        return
+    end
     now = time()
+    # Min interval guard
+    if now - bot.ts_released["check_fills"] < CHECK_FILLS_MIN_INTERVAL
+        return
+    end
+    bot.ts_locked["check_fills"] = now
     print_(["checking if new fills...\n"], n=true)
     
-    # Note: fetch_fills will be implemented in exchange-specific subtype
     fills = fetch_fills(bot)
     
     if bot.fills != fills
@@ -995,12 +1042,20 @@ function check_shrt_fills!(bot::AbstractBot, fills::Vector)
             total_size = bot.position["shrt"]["size"]
             
             # telegram.notify_close_order_filled(...) - will be implemented
+            notify_close_order_filled(bot.telegram,
+                realized_pnl=realized_pnl_shrt,
+                position_side="shrt",
+                qty=qty_sum,
+                fee=fee,
+                wallet_balance=get(bot.position, "wallet_balance", 0.0),
+                remaining_size=total_size,
+                price=vwap)
         end
         
         # Handle profit transfer if enabled
         if realized_pnl_shrt >= 0 && get(bot.config, "profit_trans_pct", 0.0) > 0.0
             amount = realized_pnl_shrt * bot.config["profit_trans_pct"]
-            # transfer_result = transfer(bot, type_="UMFUTURE_MAIN", amount=amount)
+            transfer(bot, type_="UMFUTURE_MAIN", amount=amount)
         end
     end
     
@@ -1021,6 +1076,12 @@ function check_shrt_fills!(bot::AbstractBot, fills::Vector)
             total_size = bot.position["shrt"]["size"]
             
             # telegram.notify_entry_order_filled(...) - will be implemented
+            notify_entry_order_filled(bot.telegram,
+                position_side="shrt",
+                qty=qty_sum,
+                fee=fee,
+                price=vwap,
+                total_size=total_size)
         end
     end
 end
@@ -1048,12 +1109,20 @@ function check_long_fills!(bot::AbstractBot, fills::Vector)
             total_size = bot.position["long"]["size"]
             
             # telegram.notify_close_order_filled(...) - will be implemented
+            notify_close_order_filled(bot.telegram,
+                realized_pnl=realized_pnl_long,
+                position_side="long",
+                qty=qty_sum,
+                fee=fee,
+                wallet_balance=get(bot.position, "wallet_balance", 0.0),
+                remaining_size=total_size,
+                price=vwap)
         end
         
         # Handle profit transfer if enabled
         if realized_pnl_long >= 0 && get(bot.config, "profit_trans_pct", 0.0) > 0.0
             amount = realized_pnl_long * bot.config["profit_trans_pct"]
-            # transfer_result = transfer(bot, type_="UMFUTURE_MAIN", amount=amount)
+            transfer(bot, type_="UMFUTURE_MAIN", amount=amount)
         end
     end
     
@@ -1074,6 +1143,12 @@ function check_long_fills!(bot::AbstractBot, fills::Vector)
             total_size = bot.position["long"]["size"]
             
             # telegram.notify_entry_order_filled(...) - will be implemented
+            notify_entry_order_filled(bot.telegram,
+                position_side="long",
+                qty=qty_sum,
+                fee=fee,
+                price=vwap,
+                total_size=total_size)
         end
     end
 end
@@ -1311,19 +1386,20 @@ function start_websocket!(bot::AbstractBot)
     
     print_([bot.endpoints["websocket"]])
     
-    try
-        @info "Initializing bot..."
-        init!(bot)
-    catch e
-        @error "Error initializing bot" exception=(e, catch_backtrace())
-        rethrow(e)
-    end
-    
+    # Match Python flow: update_position → init_exchange_config → init_indicators → init_order_book
     try
         @info "Updating position..."
         update_position!(bot)
     catch e
         @error "Error updating position" exception=(e, catch_backtrace())
+        rethrow(e)
+    end
+    
+    try
+        @info "Initializing exchange config..."
+        init_exchange_config!(bot)
+    catch e
+        @error "Error initializing exchange config" exception=(e, catch_backtrace())
         rethrow(e)
     end
     
@@ -1369,13 +1445,8 @@ function start_websocket!(bot::AbstractBot)
                             update_indicators!(bot, ticks)
                         end
                         
-                        # Call decide! if not currently running and timeout has passed
-                        is_running = bot.ts_locked["decide"] > bot.ts_released["decide"]
-                        timeout_passed = time() - bot.ts_released["decide"] > DECIDE_TIMEOUT
-                        
-                        if !is_running && timeout_passed
-                            # Set lock immediately before async call to prevent multiple calls
-                            bot.ts_locked["decide"] = time()
+                        # Call decide! on every tick when not locked (matching Python)
+                        if bot.ts_locked["decide"] < bot.ts_released["decide"]
                             @async try
                                 decide!(bot)
                             catch e

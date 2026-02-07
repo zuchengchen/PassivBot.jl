@@ -385,6 +385,170 @@ function private_delete(bot::BinanceBot, url::String, params::Dict=Dict())
 end
 
 """
+    execute_leverage_change(bot::BinanceBot)
+
+Set leverage to 20 on the exchange. Returns response with maxNotionalValue.
+"""
+function execute_leverage_change(bot::BinanceBot)
+    return private_post(bot, bot.base_endpoint, bot.endpoints["leverage"],
+                        Dict("symbol" => bot.symbol, "leverage" => 20))
+end
+
+"""
+    init_exchange_config!(bot::BinanceBot)
+
+Configure exchange settings: CROSSED margin type, leverage, hedge mode.
+Extracts max_pos_size_ito_usdt from leverage response.
+"""
+function init_exchange_config!(bot::BinanceBot)
+    # Set margin type to CROSSED
+    try
+        result = private_post(bot, bot.base_endpoint, bot.endpoints["margin_type"],
+                              Dict("symbol" => bot.symbol, "marginType" => "CROSSED"))
+        println(result)
+    catch e
+        @warn "Setting margin type" exception=e
+    end
+
+    # Set leverage and extract max position size
+    try
+        lev = execute_leverage_change(bot)
+        print_([lev])
+        if haskey(lev, "maxNotionalValue")
+            bot.max_pos_size_ito_usdt = parse(Float64, string(lev["maxNotionalValue"]))
+        elseif haskey(lev, :maxNotionalValue)
+            bot.max_pos_size_ito_usdt = parse(Float64, string(lev[:maxNotionalValue]))
+        end
+        println("max pos size in terms of usdt ", bot.max_pos_size_ito_usdt)
+    catch e
+        @error "Setting leverage" exception=e
+    end
+
+    # Enable hedge mode (dual side position)
+    try
+        res = private_post(bot, bot.base_endpoint, bot.endpoints["position_side"],
+                           Dict("dualSidePosition" => "true"))
+        println(res)
+    catch e
+        err_str = string(e)
+        if !occursin("-4059", err_str)
+            @error "Unable to set hedge mode" exception=e
+            error("failed to set hedge mode")
+        end
+    end
+end
+
+"""
+    check_if_other_positions(bot::BinanceBot; abort::Bool=true)
+
+Check if other symbols have positions or open orders sharing the margin wallet.
+"""
+function check_if_other_positions(bot::BinanceBot; abort::Bool=true)
+    positions = private_get(bot, bot.endpoints["position"])
+    open_orders = private_get(bot, bot.endpoints["open_orders"])
+    do_abort = false
+
+    for e in positions
+        if parse(Float64, string(get(e, "positionAmt", "0"))) != 0.0
+            sym = String(get(e, "symbol", ""))
+            if sym != bot.symbol && occursin(bot.margin_coin, sym)
+                println("\n\nWARNING\n")
+                println("account has position in other symbol: ", e)
+                println()
+                do_abort = true
+            end
+        end
+    end
+
+    for e in open_orders
+        sym = String(get(e, "symbol", ""))
+        if sym != bot.symbol && occursin(bot.margin_coin, sym)
+            println("\n\nWARNING\n")
+            println("account has open orders in other symbol: ", e)
+            println()
+            do_abort = true
+        end
+    end
+
+    if do_abort
+        if abort
+            error("please close other positions and cancel other open orders")
+        end
+    else
+        println("no positions or open orders in other symbols sharing margin wallet")
+    end
+end
+
+"""
+    fetch_income(bot::BinanceBot; limit::Int=1000, start_time=nothing, end_time=nothing)
+
+Fetch funding rate income from Binance.
+"""
+function fetch_income(bot::BinanceBot; limit::Int=1000, start_time=nothing, end_time=nothing)
+    params = Dict{String,Any}("symbol" => bot.symbol, "limit" => limit)
+    if !isnothing(start_time)
+        params["startTime"] = start_time
+    end
+    if !isnothing(end_time)
+        params["endTime"] = end_time
+    end
+    try
+        fetched = private_get(bot, bot.endpoints["income"], params)
+        income = Vector{Dict{String,Any}}()
+        for x in fetched
+            push!(income, Dict{String,Any}(
+                "symbol" => String(x["symbol"]),
+                "incomeType" => String(x["incomeType"]),
+                "income" => parse(Float64, string(x["income"])),
+                "asset" => String(x["asset"]),
+                "info" => String(get(x, "info", "")),
+                "timestamp" => Int(x["time"]),
+                "tranId" => get(x, "tranId", 0),
+                "tradeId" => get(x, "tradeId", "")
+            ))
+        end
+        return income
+    catch e
+        @error "Error fetching income" exception=(e, catch_backtrace())
+        return Vector{Dict{String,Any}}()
+    end
+end
+
+"""
+    fetch_account(bot::BinanceBot)
+
+Fetch spot account balances.
+"""
+function fetch_account(bot::BinanceBot)
+    try
+        return private_get(bot, bot.endpoints["account"]; base_endpoint=bot.spot_base_endpoint)
+    catch e
+        @error "Error fetching account" exception=(e, catch_backtrace())
+        return Dict{String,Any}("balances" => [])
+    end
+end
+
+"""
+    transfer(bot::BinanceBot; type_::String, amount::Float64, asset::String="USDT")
+
+Transfer funds between futures and spot wallets.
+type_ can be "UMFUTURE_MAIN" (futures→spot) or "MAIN_UMFUTURE" (spot→futures).
+"""
+function transfer(bot::BinanceBot; type_::String, amount::Float64, asset::String="USDT")
+    params = Dict{String,Any}(
+        "type" => type_,
+        "asset" => asset,
+        "amount" => string(amount)
+    )
+    try
+        return private_post(bot, bot.spot_base_endpoint, bot.endpoints["transfer"], params)
+    catch e
+        @error "Error transferring" exception=(e, catch_backtrace())
+        return Dict{String,Any}("code" => -1, "msg" => string(e))
+    end
+end
+
+"""
     init!(bot::BinanceBot)
 
 Async initialization of the bot.
@@ -496,8 +660,11 @@ end
 Fetch current position and balance.
 """
 function fetch_position(bot::BinanceBot)
-    positions = private_get(bot, bot.endpoints["position"], Dict("symbol" => bot.symbol))
-    balance = private_get(bot, bot.endpoints["balance"], Dict())
+    # Fetch position and balance concurrently (matching Python asyncio.gather)
+    positions_task = @async private_get(bot, bot.endpoints["position"], Dict("symbol" => bot.symbol))
+    balance_task = @async private_get(bot, bot.endpoints["balance"], Dict())
+    positions = fetch(positions_task)
+    balance = fetch(balance_task)
     
     position = Dict{String,Any}()
     

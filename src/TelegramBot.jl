@@ -98,8 +98,9 @@ end
 # Export list
 # ============================================================================
 
-export TelegramBot, send_message, start_telegram_bot, create_telegram_bot
+export TelegramBot, send_message, send_msg, start_telegram_bot, create_telegram_bot
 export create_keyboard_markup, answer_callback_query
+export notify_entry_order_filled, notify_close_order_filled, log_start
 
 """
     send_message(tg::TelegramBot, text::String, reply_markup=nothing)
@@ -136,6 +137,70 @@ function send_message(tg::TelegramBot, text::String, reply_markup=nothing)
         @error "Failed to send Telegram message" exception=e
         return false
     end
+end
+
+"""Alias for send_message (matches Python's send_msg)"""
+send_msg(tg::TelegramBot, text::String) = send_message(tg, text)
+
+"""Send startup notification"""
+function log_start(tg::TelegramBot)
+    bot = tg.bot_instance
+    symbol = get(bot.config, "symbol", "UNKNOWN")
+    send_message(tg, "<b>Passivbot started!</b>\n<b>$(symbol)</b>")
+end
+
+"""
+Notify when an entry order is filled.
+"""
+function notify_entry_order_filled(tg::TelegramBot; position_side::String, qty::Float64,
+                                    fee::Float64, price::Float64, total_size::Float64)
+    config = tg.config
+    if get(config, "notify_entry_fill", true) == false
+        return
+    end
+    bot = tg.bot_instance
+    qty_step = get(bot.config, "qty_step", 0.001)
+    price_step = get(bot.config, "price_step", 0.01)
+    margin_coin = get(bot.config, "margin_coin", "USDT")
+    exchange = get(bot.config, "exchange", "binance")
+    symbol = get(bot.config, "symbol", "")
+    fee_pct = qty * price > 0 ? round_(fee / (qty * price) * 100, price_step) : 0.0
+    
+    msg = "<b>🔵 $(titlecase(exchange)) $(symbol)</b> Opened $(position_side)\n" *
+          "<b>Amount: </b><pre>$(round_(qty, qty_step))</pre>\n" *
+          "<b>Total size: </b><pre>$(round_(total_size, qty_step))</pre>\n" *
+          "<b>Price: </b><pre>$(round_(price, price_step))</pre>\n" *
+          "<b>Fee: </b><pre>$(round_(fee, price_step)) $(margin_coin) ($(fee_pct)%)</pre>"
+    send_message(tg, msg)
+end
+
+"""
+Notify when a close order is filled.
+"""
+function notify_close_order_filled(tg::TelegramBot; realized_pnl::Float64, position_side::String,
+                                    qty::Float64, fee::Float64, wallet_balance::Float64,
+                                    remaining_size::Float64, price::Float64)
+    config = tg.config
+    if get(config, "notify_close_fill", true) == false
+        return
+    end
+    bot = tg.bot_instance
+    qty_step = get(bot.config, "qty_step", 0.001)
+    price_step = get(bot.config, "price_step", 0.01)
+    margin_coin = get(bot.config, "margin_coin", "USDT")
+    exchange = get(bot.config, "exchange", "binance")
+    symbol = get(bot.config, "symbol", "")
+    icon = realized_pnl >= 0 ? "✅" : "❌"
+    pnl_pct = wallet_balance > 0 ? round_(realized_pnl / wallet_balance * 100, price_step) : 0.0
+    fee_pct = realized_pnl != 0 ? round_(fee / abs(realized_pnl) * 100, price_step) : 0.0
+    
+    msg = "<b>$(icon) $(titlecase(exchange)) $(symbol)</b> Closed $(position_side)\n" *
+          "<b>PNL: </b><pre>$(round_(realized_pnl, price_step)) $(margin_coin) ($(pnl_pct)%)</pre>\n" *
+          "<b>Amount: </b><pre>$(round_(qty, qty_step))</pre>\n" *
+          "<b>Remaining size: </b><pre>$(round_(remaining_size, qty_step))</pre>\n" *
+          "<b>Price: </b><pre>$(round_(price, price_step))</pre>\n" *
+          "<b>Fee: </b><pre>$(round_(fee, price_step)) $(margin_coin) ($(fee_pct)%)</pre>"
+    send_message(tg, msg)
 end
 
 """

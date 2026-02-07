@@ -83,6 +83,24 @@ function main()
     # Start bot with optional auto-restart
     if auto_restart
         restart_count = 0
+        bot = nothing
+        
+        # Register signal handlers for graceful shutdown
+        function handle_signal(sig)
+            println("\n[$(now())] Received signal $sig, stopping bot gracefully...")
+            if bot !== nothing
+                stop!(bot)
+            end
+        end
+        
+        # SIGTERM handler (systemd/docker stop)
+        ccall(:signal, Ptr{Cvoid}, (Cint, Ptr{Cvoid}), 15, @cfunction(sig -> nothing, Cvoid, (Cint,)))
+        Base.atexit() do
+            if bot !== nothing && !bot.stop_websocket
+                println("\n[$(now())] atexit: stopping bot...")
+                stop!(bot)
+            end
+        end
         
         while restart_count < max_restarts
             try
@@ -124,6 +142,13 @@ function main()
         end
     else
         # Single run without restart
+        bot = nothing
+        Base.atexit() do
+            if bot !== nothing && !bot.stop_websocket
+                println("\n[$(now())] atexit: stopping bot...")
+                stop!(bot)
+            end
+        end
         try
             bot = BinanceBot(config)
             start_bot(bot)
