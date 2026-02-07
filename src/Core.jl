@@ -858,7 +858,11 @@ function cancel_and_create!(bot::AbstractBot)
     if get(bot.config, "stop_mode", nothing) != "manual"
         if !isempty(to_cancel)
             # Cancel orders asynchronously
-            task = @async cancel_orders!(bot, to_cancel[1:min(bot.n_orders_per_execution, length(to_cancel))])
+            task = @async try
+                cancel_orders!(bot, to_cancel[1:min(bot.n_orders_per_execution, length(to_cancel))])
+            catch e
+                @error "Error in async cancel_orders!" exception=(e, catch_backtrace())
+            end
             push!(results, task)
             sleep(0.005)  # Sleep 5ms between cancellations and creations
         end
@@ -866,6 +870,17 @@ function cancel_and_create!(bot::AbstractBot)
         if !isempty(to_create)
             created = create_orders!(bot, to_create[1:min(bot.n_orders_per_execution, length(to_create))])
             push!(results, created)
+        end
+    end
+    
+    # Wait for async cancel task to complete
+    for r in results
+        if r isa Task
+            try
+                fetch(r)
+            catch e
+                @error "Error fetching cancel task result" exception=(e, catch_backtrace())
+            end
         end
     end
     
@@ -895,7 +910,11 @@ function decide!(bot::AbstractBot)
     if bot.price <= bot.highest_bid
         print_(["bid maybe taken"], n=true)
         cancel_and_create!(bot)
-        @async check_fills!(bot)
+        @async try
+            check_fills!(bot)
+        catch e
+            @error "Error in async check_fills!" exception=(e, catch_backtrace())
+        end
         bot.ts_released["decide"] = time()
         return
     end
@@ -904,7 +923,11 @@ function decide!(bot::AbstractBot)
     if bot.price >= bot.lowest_ask
         print_(["ask maybe taken"], n=true)
         cancel_and_create!(bot)
-        @async check_fills!(bot)
+        @async try
+            check_fills!(bot)
+        catch e
+            @error "Error in async check_fills!" exception=(e, catch_backtrace())
+        end
         bot.ts_released["decide"] = time()
         return
     end
@@ -920,7 +943,11 @@ function decide!(bot::AbstractBot)
     
     # Periodic fill check
     if time() - bot.ts_released["check_fills"] > CHECK_FILLS_INTERVAL
-        @async check_fills!(bot)
+        @async try
+            check_fills!(bot)
+        catch e
+            @error "Error in async check_fills!" exception=(e, catch_backtrace())
+        end
     end
 end
 
@@ -1349,19 +1376,11 @@ function start_websocket!(bot::AbstractBot)
                         if !is_running && timeout_passed
                             # Set lock immediately before async call to prevent multiple calls
                             bot.ts_locked["decide"] = time()
-                            @async decide!(bot)
-                        end
-                    end
-                    
-                    if bot.process_websocket_ticks
-                        if !isempty(ticks)
-                            update_indicators!(bot, ticks)
-                        end
-                        
-                        # Call decide! periodically based on timeout
-                        if time() - bot.ts_released["decide"] > DECIDE_TIMEOUT
-                            bot.ts_released["decide"] = time()
-                            @async decide!(bot)
+                            @async try
+                                decide!(bot)
+                            catch e
+                                @error "Error in async decide!" exception=(e, catch_backtrace())
+                            end
                         end
                     end
                     

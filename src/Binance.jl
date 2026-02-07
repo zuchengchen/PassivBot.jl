@@ -244,8 +244,13 @@ function public_get(bot::BinanceBot, url::String, params::Dict=Dict())
         string_params[string(k)] = string(v)
     end
     
-    response = HTTP.get(bot.base_endpoint * url, query=string_params)
-    return JSON3.read(String(response.body))
+    try
+        response = HTTP.get(bot.base_endpoint * url, query=string_params)
+        return JSON3.read(String(response.body))
+    catch e
+        @error "public_get failed" url=url exception=(e, catch_backtrace())
+        rethrow(e)
+    end
 end
 
 """
@@ -312,9 +317,13 @@ function private_get(bot::BinanceBot, url::String, params::Dict=Dict(); base_end
     full_url = endpoint * url * "?" * query_string
     
     headers = ["X-MBX-APIKEY" => bot.key]
-    response = HTTP.get(full_url, headers=headers)
-    
-    return JSON3.read(String(response.body))
+    try
+        response = HTTP.get(full_url, headers=headers)
+        return JSON3.read(String(response.body))
+    catch e
+        @error "private_get failed" url=url exception=(e, catch_backtrace())
+        rethrow(e)
+    end
 end
 
 """
@@ -337,9 +346,13 @@ function private_post(bot::BinanceBot, base_endpoint::String, url::String, param
     full_url = base_endpoint * url * "?" * query_string
     
     headers = ["X-MBX-APIKEY" => bot.key]
-    response = HTTP.post(full_url, headers=headers)
-    
-    return JSON3.read(String(response.body))
+    try
+        response = HTTP.post(full_url, headers=headers)
+        return JSON3.read(String(response.body))
+    catch e
+        @error "private_post failed" url=url exception=(e, catch_backtrace())
+        rethrow(e)
+    end
 end
 
 """
@@ -362,9 +375,13 @@ function private_delete(bot::BinanceBot, url::String, params::Dict=Dict())
     full_url = bot.base_endpoint * url * "?" * query_string
     
     headers = ["X-MBX-APIKEY" => bot.key]
-    response = HTTP.delete(full_url, headers=headers)
-    
-    return JSON3.read(String(response.body))
+    try
+        response = HTTP.delete(full_url, headers=headers)
+        return JSON3.read(String(response.body))
+    catch e
+        @error "private_delete failed" url=url exception=(e, catch_backtrace())
+        rethrow(e)
+    end
 end
 
 """
@@ -595,6 +612,50 @@ function execute_cancellation(bot::BinanceBot, order::Dict)
         )
     else
         return cancellation
+    end
+end
+
+"""
+    fetch_fills(bot::BinanceBot; limit::Int=1000, from_id::Union{Nothing,Int}=nothing,
+                start_time::Union{Nothing,Int}=nothing, end_time::Union{Nothing,Int}=nothing)
+
+Fetch recent fills (user trades) from Binance.
+"""
+function fetch_fills(bot::BinanceBot; limit::Int=1000, from_id::Union{Nothing,Int}=nothing,
+                     start_time::Union{Nothing,Int}=nothing, end_time::Union{Nothing,Int}=nothing)
+    params = Dict{String,Any}("symbol" => bot.symbol, "limit" => limit)
+    if !isnothing(from_id)
+        params["fromId"] = max(0, from_id)
+    end
+    if !isnothing(start_time)
+        params["startTime"] = start_time
+    end
+    if !isnothing(end_time)
+        params["endTime"] = end_time
+    end
+    try
+        fetched = private_get(bot, bot.endpoints["fills"], params)
+        fills = Vector{Dict{String,Any}}()
+        for x in fetched
+            push!(fills, Dict{String,Any}(
+                "symbol" => String(x["symbol"]),
+                "order_id" => Int(x["orderId"]),
+                "side" => lowercase(String(x["side"])),
+                "price" => parse(Float64, string(x["price"])),
+                "qty" => parse(Float64, string(x["qty"])),
+                "realized_pnl" => parse(Float64, string(x["realizedPnl"])),
+                "cost" => parse(Float64, string(x["quoteQty"])),
+                "fee_paid" => parse(Float64, string(x["commission"])),
+                "fee_token" => String(x["commissionAsset"]),
+                "timestamp" => Int(x["time"]),
+                "position_side" => replace(lowercase(String(x["positionSide"])), "short" => "shrt"),
+                "is_maker" => x["maker"]
+            ))
+        end
+        return fills
+    catch e
+        @error "Error fetching fills" exception=(e, catch_backtrace())
+        return Vector{Dict{String,Any}}()
     end
 end
 
