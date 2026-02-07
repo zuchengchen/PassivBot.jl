@@ -248,7 +248,6 @@ function public_get(bot::BinanceBot, url::String, params::Dict=Dict())
         response = HTTP.get(bot.base_endpoint * url, query=string_params)
         return JSON3.read(String(response.body))
     catch e
-        @error "public_get failed" url=url exception=(e, catch_backtrace())
         rethrow(e)
     end
 end
@@ -321,7 +320,6 @@ function private_get(bot::BinanceBot, url::String, params::Dict=Dict(); base_end
         response = HTTP.get(full_url, headers=headers)
         return JSON3.read(String(response.body))
     catch e
-        @error "private_get failed" url=url exception=(e, catch_backtrace())
         rethrow(e)
     end
 end
@@ -350,7 +348,6 @@ function private_post(bot::BinanceBot, base_endpoint::String, url::String, param
         response = HTTP.post(full_url, headers=headers)
         return JSON3.read(String(response.body))
     catch e
-        @error "private_post failed" url=url exception=(e, catch_backtrace())
         rethrow(e)
     end
 end
@@ -379,7 +376,6 @@ function private_delete(bot::BinanceBot, url::String, params::Dict=Dict())
         response = HTTP.delete(full_url, headers=headers)
         return JSON3.read(String(response.body))
     catch e
-        @error "private_delete failed" url=url exception=(e, catch_backtrace())
         rethrow(e)
     end
 end
