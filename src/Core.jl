@@ -203,9 +203,15 @@ function set_config!(bot::AbstractBot, config::Dict{String, Any})
     
     bot.config = config
     
-    # Set attributes from config
+    # Set attributes from config (only for fields that exist on the struct)
     for (key, value) in config
-        setfield!(bot, Symbol(key), value)
+        if hasfield(typeof(bot), Symbol(key))
+            try
+                setfield!(bot, Symbol(key), value)
+            catch
+                # Type mismatch — skip silently (value stays in config dict)
+            end
+        end
     end
     
     # Update xk if keys exist
@@ -221,7 +227,13 @@ Set a single configuration value
 """
 function set_config_value!(bot::AbstractBot, key::String, value)
     bot.config[key] = value
-    setfield!(bot, Symbol(key), bot.config[key])
+    if hasfield(typeof(bot), Symbol(key))
+        try
+            setfield!(bot, Symbol(key), bot.config[key])
+        catch
+            # Type mismatch — value stays in config dict only
+        end
+    end
 end
 
 # Initialization and logging methods

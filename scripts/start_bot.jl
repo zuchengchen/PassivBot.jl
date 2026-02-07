@@ -85,16 +85,7 @@ function main()
         restart_count = 0
         bot = nothing
         
-        # Register signal handlers for graceful shutdown
-        function handle_signal(sig)
-            println("\n[$(now())] Received signal $sig, stopping bot gracefully...")
-            if bot !== nothing
-                stop!(bot)
-            end
-        end
-        
-        # SIGTERM handler (systemd/docker stop)
-        ccall(:signal, Ptr{Cvoid}, (Cint, Ptr{Cvoid}), 15, @cfunction(sig -> nothing, Cvoid, (Cint,)))
+        # Register atexit handler for graceful shutdown (handles SIGTERM, exit, etc.)
         Base.atexit() do
             if bot !== nothing && !bot.stop_websocket
                 println("\n[$(now())] atexit: stopping bot...")
