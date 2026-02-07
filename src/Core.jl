@@ -1386,7 +1386,17 @@ function start_websocket!(bot::AbstractBot)
     
     print_([bot.endpoints["websocket"]])
     
-    # Match Python flow: update_position → init_exchange_config → init_indicators → init_order_book
+    # Match Python flow: init (exchange info) → update_position → init_exchange_config → init_indicators → init_order_book
+    # init! must come first because it sets coin/quot/margin_coin/price_step/qty_step from exchange info,
+    # which are needed by update_position! (fetch_position uses bot.quot)
+    try
+        @info "Initializing bot (exchange info, xk, fills)..."
+        init!(bot)
+    catch e
+        @error "Error initializing bot" exception=(e, catch_backtrace())
+        rethrow(e)
+    end
+    
     try
         @info "Updating position..."
         update_position!(bot)
