@@ -413,7 +413,7 @@ function backtest(config::Dict, ticks::Matrix{Float64}, do_print::Bool=false)
                 fill["timestamp"] = tick[3]
                 fill["trade_id"] = k
                 fill["gain"] = fill["equity"] / config["starting_balance"]
-                fill["n_days"] = (tick[3] - ticks[ema_span, 3]) / (1000 * 60 * 60 * 24)
+                fill["n_days"] = (tick[3] - ticks[ema_span + 1, 3]) / (1000 * 60 * 60 * 24)
                 fill["closest_liq"] = closest_liq
                 
                 try
@@ -496,7 +496,7 @@ function plot_wrap(bc::Dict, ticks::Matrix{Float64}, live_config::Dict, plot::St
     # Create output directory: backtest_results/<symbol>/<timestamp>/
     timestamp_str = replace(ts_to_date(time())[1:19], ":" => "")
     symbol = get(config, "symbol", "UNKNOWN")
-    base_dir = get(config, "plots_dirpath", "backtest_results")
+    base_dir = get(config, "plots_dirpath", "results/backtests")
     output_dir = joinpath(base_dir, symbol, timestamp_str, "")
     mkpath(output_dir)
     config["plots_dirpath"] = output_dir
@@ -505,13 +505,11 @@ function plot_wrap(bc::Dict, ticks::Matrix{Float64}, live_config::Dict, plot::St
     config["start_date"] = get(bc, "start_date", "")
     config["end_date"] = get(bc, "end_date", "")
     
-    # Save fills to CSV if plotting
-    if plot == "True"
-        println("Saving fills to CSV...")
-        fills_csv_path = joinpath(output_dir, "fills.csv")
-        CSV.write(fills_csv_path, fdf)
-        println("Fills saved to $fills_csv_path")
-    end
+    # Save fills to CSV
+    println("Saving fills to CSV...")
+    fills_csv_path = joinpath(output_dir, "fills.csv")
+    CSV.write(fills_csv_path, fdf)
+    println("Fills saved to $fills_csv_path")
     
     # Create tick DataFrame for plotting
     df = DataFrame(

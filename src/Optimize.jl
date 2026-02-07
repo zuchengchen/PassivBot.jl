@@ -144,7 +144,7 @@ end
 Simplified fill analysis for optimization.
 Returns metrics needed for objective function calculation.
 """
-function analyze_fills_simple(fills::Vector{Dict}, config::Dict, last_ts::Float64)
+function analyze_fills_simple(fills::Vector{<:Dict}, config::Dict, last_ts::Float64)
     if isempty(fills)
         return get_empty_analysis(config)
     end
@@ -226,7 +226,7 @@ function simple_sliding_window_wrap(config::Dict, ticks::Matrix{Float64})
     for ticks_slice in iter_slices(ticks, sliding_window_size, n_windows, test_full)
         # Run backtest
         try
-            fills, stats, did_finish = Backtest.backtest(config, ticks_slice, false)
+            fills, stats, did_finish = backtest(config, ticks_slice, false)
             
             # Analyze results
             try
@@ -454,8 +454,7 @@ function backtest_tune(ticks::Matrix{Float64}, backtest_config::Dict;
             Method = :adaptive_de_rand_1_bin_radiuslimited,
             MaxFuncEvals = iters * n_particles,
             TraceMode = :verbose,
-            TraceInterval = 1.0,
-            Workers = min(num_cpus, Threads.nthreads())
+            TraceInterval = 1.0
         )
         
         best_x = BlackBoxOptim.best_candidate(opt_result)

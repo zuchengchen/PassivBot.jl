@@ -179,12 +179,13 @@ function calc_first_stds(chunk_size::Int, span::Int, xs_::Vector{Float64})::Tupl
     stds_ = zeros(Float64, chunk_size)
     xsum_ = sum(xs_[1:span])
     xsum_sq_ = sum(xs_[1:span] .^ 2)
-    stds_[span] = sqrt((xsum_sq_ / span) - (xsum_ / span)^2)
+    stds_[span] = sqrt(max(0.0, (xsum_sq_ / span) - (xsum_ / span)^2))
     
-    @inbounds for i in (span+1):chunk_size
+    actual_end = min(chunk_size, length(xs_))
+    @inbounds for i in (span+1):actual_end
         xsum_ += xs_[i] - xs_[i-span]
         xsum_sq_ += xs_[i]^2 - xs_[i-span]^2
-        stds_[i] = sqrt((xsum_sq_ / span) - (xsum_ / span)^2)
+        stds_[i] = sqrt(max(0.0, (xsum_sq_ / span) - (xsum_ / span)^2))
     end
     return stds_, xsum_, xsum_sq_
 end
@@ -197,15 +198,19 @@ Calculate subsequent chunks of standard deviations (internal helper).
 """
 function calc_stds_(chunk_size::Int, span::Int, xs_::Vector{Float64}, 
                     xsum_::Float64, xsum_sq_::Float64, kc_::Int)::Tuple{Vector{Float64}, Float64, Float64}
+    actual_size = min(chunk_size, length(xs_) - kc_)
     new_stds = zeros(Float64, chunk_size)
+    if actual_size < 1
+        return new_stds, xsum_, xsum_sq_
+    end
     xsum_ += xs_[kc_+1] - xs_[kc_+1-span]
     xsum_sq_ += xs_[kc_+1]^2 - xs_[kc_+1-span]^2
-    new_stds[1] = sqrt((xsum_sq_ / span) - (xsum_ / span)^2)
+    new_stds[1] = sqrt(max(0.0, (xsum_sq_ / span) - (xsum_ / span)^2))
     
-    @inbounds for i in 2:chunk_size
+    @inbounds for i in 2:actual_size
         xsum_ += xs_[kc_+i] - xs_[kc_+i-span]
         xsum_sq_ += xs_[kc_+i]^2 - xs_[kc_+i-span]^2
-        new_stds[i] = sqrt((xsum_sq_ / span) - (xsum_ / span)^2)
+        new_stds[i] = sqrt(max(0.0, (xsum_sq_ / span) - (xsum_ / span)^2))
     end
     return new_stds, xsum_, xsum_sq_
 end

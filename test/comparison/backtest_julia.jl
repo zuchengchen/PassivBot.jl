@@ -378,11 +378,10 @@ function main()
     config = merge(bc_config, live_config)
     config["session_name"] = config["start_date"] * "_" * config["end_date"]
     
-    base_dirpath = joinpath("backtests", config["exchange"], config["symbol"])
-    config["caches_dirpath"] = make_get_filepath(joinpath(base_dirpath, "caches", ""))
+    config["caches_dirpath"] = make_get_filepath(joinpath("data", "caches", config["exchange"], config["symbol"], ""))
     
     # Load market specific settings
-    market_settings_path = joinpath(base_dirpath, "caches", "market_specific_settings.json")
+    market_settings_path = joinpath(config["caches_dirpath"], "market_specific_settings.json")
     if isfile(market_settings_path)
         market_settings = JSON3.read(read(market_settings_path, String), Dict{String,Any})
         for (k, v) in market_settings

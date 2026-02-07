@@ -36,7 +36,7 @@ function parse_commandline()
             action = :store_true
         "--output", "-o"
             help = "Output directory for plots"
-            default = "backtest_results"
+            default = "results/backtests"
         "--symbol", "-s"
             help = "Override symbol from config"
             default = nothing
@@ -104,12 +104,22 @@ function main()
     end_date = backtest_config["end_date"]
     backtest_config["session_name"] = "$(start_date)_$(end_date)"
     
-    # Set caches_dirpath to match Python structure
-    base_dirpath = joinpath("backtests", backtest_config["exchange"], symbol)
-    backtest_config["caches_dirpath"] = joinpath(base_dirpath, "caches")
-    backtest_config["plots_dirpath"] = joinpath(base_dirpath, "plots")
+    # Set caches_dirpath to match new directory structure
+    base_dirpath = joinpath("data", "caches", backtest_config["exchange"], symbol)
+    backtest_config["caches_dirpath"] = joinpath(base_dirpath)
+    backtest_config["plots_dirpath"] = joinpath("results", "backtests")
     
-    # Add required exchange-specific parameters
+    # Load market-specific settings from cache (matching Python behavior)
+    mss_path = joinpath(backtest_config["caches_dirpath"], "market_specific_settings.json")
+    if isfile(mss_path)
+        println("Loading market specific settings from $mss_path")
+        mss = JSON3.read(read(mss_path, String), Dict{String, Any})
+        merge!(backtest_config, mss)
+    else
+        @warn "market_specific_settings.json not found at $mss_path, using defaults"
+    end
+    
+    # Add required exchange-specific parameters (only if not already set from cache)
     if !haskey(backtest_config, "qty_step")
         backtest_config["qty_step"] = 0.001
     end

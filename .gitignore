@@ -21,10 +21,11 @@ Thumbs.db
 logs/
 *.log
 
-# Data
-caches/
+# Data (input)
 data/
-plots/
+
+# Results (output)
+results/
 
 # API Keys
 api-keys.json

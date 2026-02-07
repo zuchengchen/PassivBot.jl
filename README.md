@@ -295,11 +295,13 @@ PassivBot.jl/
 ├── test/                     # Test suite
 │   └── integration_test.jl  # Integration tests
 │
-├── data/                     # Historical data (gitignored)
+├── data/                     # Data (gitignored)
+│   ├── historical/          # Raw trade data per symbol
+│   └── caches/              # Tick caches per exchange/symbol
+├── results/                  # All outputs (gitignored)
+│   ├── backtests/           # Backtest results, plots, fills
+│   └── optimize/            # Optimization best configs
 ├── logs/                     # Runtime logs (gitignored)
-├── plots/                    # Generated plots (gitignored)
-├── backtest_results/         # Backtest outputs
-└── optimize_results/         # Optimization outputs
 ```
 
 ---

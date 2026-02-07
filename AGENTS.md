@@ -314,7 +314,9 @@ git commit -m "fix: correct position calculation in update_position!
 
 ### .gitignore
 - `api-keys.json` - Never commit
-- `data/`, `logs/`, `plots/` - Generated directories
+- `data/` - Historical data and caches
+- `results/` - Backtest and optimization outputs
+- `logs/` - Runtime logs
 - `*.jl.cov`, `*.jl.mem` - Julia test artifacts
 
 ### File Permissions

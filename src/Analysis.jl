@@ -191,8 +191,15 @@ function analyze_fills(fills::Vector{Dict{String,Any}}, bc::Dict{String,Any}, la
         return (DataFrame(), get_empty_analysis(bc))
     end
     
-    # Convert to DataFrame
     fdf = DataFrame(fills)
+    
+    col_order = ["trade_id", "qty", "price", "side", "type", "fee_paid", "pnl",
+                  "pside", "long_psize", "long_pprice", "shrt_psize", "shrt_pprice",
+                  "liq_price", "liq_diff", "equity", "available_margin", "balance",
+                  "timestamp", "gain", "n_days", "closest_liq", "average_daily_gain"]
+    existing = [c for c in col_order if c in names(fdf)]
+    extra = [c for c in names(fdf) if !(c in col_order)]
+    fdf = fdf[:, vcat(existing, extra)]
     
     # Separate long and short fills
     longs = filter(row -> get(row, "pside", "") == "long", fills)

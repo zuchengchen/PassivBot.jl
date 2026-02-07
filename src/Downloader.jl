@@ -396,18 +396,18 @@ function download_ticks(downloader::Downloader)
     if haskey(downloader.config, "historical_data_path") && !isempty(get(downloader.config, "historical_data_path", ""))
         downloader.filepath = make_get_filepath(joinpath(
             downloader.config["historical_data_path"],
-            "historical_data",
-            downloader.config["exchange"],
-            "agg_trades_futures",
+            "data",
+            "historical",
             downloader.config["symbol"],
+            "agg_trades",
             ""
         ))
     else
         downloader.filepath = make_get_filepath(joinpath(
-            "historical_data",
-            downloader.config["exchange"],
-            "agg_trades_futures",
+            "data",
+            "historical",
             downloader.config["symbol"],
+            "agg_trades",
             ""
         ))
     end
@@ -1066,10 +1066,9 @@ function prep_config(args)
     config["session_name"] = "$(start_clean)_$(end_clean)"
     
     # Setup directories
-    base_dirpath = joinpath("backtests", config["exchange"], config["symbol"])
-    config["caches_dirpath"] = make_get_filepath(joinpath(base_dirpath, "caches", ""))
-    config["optimize_dirpath"] = make_get_filepath(joinpath(base_dirpath, "optimize", ""))
-    config["plots_dirpath"] = make_get_filepath(joinpath(base_dirpath, "plots", ""))
+    config["caches_dirpath"] = make_get_filepath(joinpath("data", "caches", config["exchange"], config["symbol"], ""))
+    config["optimize_dirpath"] = make_get_filepath(joinpath("results", "optimize", ""))
+    config["plots_dirpath"] = make_get_filepath(joinpath("results", "backtests", ""))
     
     # Load or fetch market specific settings
     mss_path = joinpath(config["caches_dirpath"], "market_specific_settings.json")

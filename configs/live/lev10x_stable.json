@@ -18,6 +18,6 @@
     "stop_loss_liq_diff": 0.0,
     "stop_loss_pos_pct": 0.0,
     "pbr_limit": 20.0,
-    "profit_trans_pct": 0.5
+    "profit_trans_pct": 0.0
 }
 
