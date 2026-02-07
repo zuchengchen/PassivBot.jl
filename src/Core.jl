@@ -1502,9 +1502,9 @@ function start_websocket!(bot::AbstractBot)
         
         if bot.telegram !== nothing
             if bot.stop_websocket
-                # telegram.send_msg("<pre>Bot stopped</pre>")
+                send_msg(bot.telegram, "<pre>Bot stopped</pre>")
             elseif bot.new_symbol !== nothing
-                # telegram.send_msg("<pre>Changing symbol to $(bot.new_symbol)</pre>")
+                send_msg(bot.telegram, "<pre>Changing symbol to $(bot.new_symbol)</pre>")
             end
         end
     end

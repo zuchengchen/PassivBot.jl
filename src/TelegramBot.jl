@@ -29,9 +29,12 @@ mutable struct TelegramBot
     bot_instance::Any
     config::Dict{String,Any}
     last_update_id::Int
+    # Conversation state for multi-step flows (e.g., set_symbol)
+    conversation_state::Symbol  # :none, :awaiting_symbol, :awaiting_symbol_confirm
+    pending_symbol::Union{String, Nothing}
     
     function TelegramBot(token::String, chat_id::String, bot_instance, config::Dict{String,Any})
-        new(token, chat_id, bot_instance, config, 0)
+        new(token, chat_id, bot_instance, config, 0, :none, nothing)
     end
 end
 
@@ -273,7 +276,8 @@ function handle_command(tg::TelegramBot, command::String, args::Vector{String})
     keyboard_buttons = [
         ["/status", "/balance", "/position"],
         ["/do_long", "/stop_long", "/do_shrt"],
-        ["/stop_shrt", "/config", "/help"]
+        ["/stop_shrt", "/set_symbol", "/config"],
+        ["/stop", "/help"]
     ]
     keyboard = create_keyboard_markup(keyboard_buttons, resize_keyboard=true)
 
@@ -287,6 +291,7 @@ function handle_command(tg::TelegramBot, command::String, args::Vector{String})
         /balance - Show current balance
         /position - Show current position
         /config - Show current configuration
+        /set_symbol - Switch trading symbol
         /do_long - Enable long trading
         /stop_long - Disable long trading
         /do_shrt - Enable short trading
@@ -394,6 +399,13 @@ function handle_command(tg::TelegramBot, command::String, args::Vector{String})
             send_message(tg, "⛔ Short trading disabled.", keyboard)
         end
 
+    elseif command == "/set_symbol"
+        # Step 1: Begin set_symbol conversation
+        tg.pending_symbol = nothing
+        tg.conversation_state = :awaiting_symbol
+        cancel_keyboard = create_keyboard_markup([["cancel"]], one_time_keyboard=true)
+        send_message(tg, "Please type the symbol to load, prefixed with / (for example \"/BTCUSDT\")", cancel_keyboard)
+
     elseif command == "/stop"
         send_message(tg, "🛑 Stopping bot gracefully...")
         bot.stop_websocket = true
@@ -416,7 +428,8 @@ function handle_callback_query(tg::TelegramBot, callback_query::Dict, callback_d
     keyboard_buttons = [
         ["/status", "/balance", "/position"],
         ["/do_long", "/stop_long", "/do_shrt"],
-        ["/stop_shrt", "/config", "/help"]
+        ["/stop_shrt", "/set_symbol", "/config"],
+        ["/stop", "/help"]
     ]
     keyboard = create_keyboard_markup(keyboard_buttons, resize_keyboard=true)
 
@@ -447,11 +460,55 @@ function handle_text_message(tg::TelegramBot, text::String)
     keyboard_buttons = [
         ["/status", "/balance", "/position"],
         ["/do_long", "/stop_long", "/do_shrt"],
-        ["/stop_shrt", "/config", "/help"]
+        ["/stop_shrt", "/set_symbol", "/config"],
+        ["/stop", "/help"]
     ]
     keyboard = create_keyboard_markup(keyboard_buttons, resize_keyboard=true)
 
-    # Handle button responses
+    # Handle conversation states
+    if tg.conversation_state == :awaiting_symbol
+        # Step 2: User typed a symbol (or cancel)
+        if lowercase(text) == "cancel"
+            tg.conversation_state = :none
+            tg.pending_symbol = nothing
+            send_message(tg, "Action aborted.", keyboard)
+            return
+        end
+        # Parse symbol: strip /, uppercase, append USDT if not present
+        sym = uppercase(replace(text, "/" => ""))
+        if !endswith(sym, "USDT")
+            sym = sym * "USDT"
+        end
+        tg.pending_symbol = sym
+        tg.conversation_state = :awaiting_symbol_confirm
+        confirm_keyboard = create_keyboard_markup([["confirm", "abort"]], one_time_keyboard=true)
+        send_message(tg, "You have chosen to switch to symbol <b>$(sym)</b>. Please confirm this choice.", confirm_keyboard)
+        return
+
+    elseif tg.conversation_state == :awaiting_symbol_confirm
+        # Step 3: User confirms or aborts
+        answer = lowercase(text)
+        if answer == "confirm"
+            sym = tg.pending_symbol
+            tg.conversation_state = :none
+            send_message(tg, "Switching symbol to <b>$(sym)</b>...", keyboard)
+            bot.new_symbol = sym
+            tg.pending_symbol = nothing
+            return
+        elseif answer == "abort"
+            tg.conversation_state = :none
+            tg.pending_symbol = nothing
+            send_message(tg, "Switching symbol aborted.", keyboard)
+            return
+        else
+            # Invalid input, ask again
+            confirm_keyboard = create_keyboard_markup([["confirm", "abort"]], one_time_keyboard=true)
+            send_message(tg, "Please type <b>confirm</b> or <b>abort</b>.", confirm_keyboard)
+            return
+        end
+    end
+
+    # Handle button responses (no active conversation)
     if text == "confirm"
         send_message(tg, "✅ Action confirmed.", keyboard)
     elseif text == "abort"
@@ -553,12 +610,18 @@ function process_updates(tg::TelegramBot)
 
                     # Parse command
                     if startswith(text, "/")
-                        parts = split(text)
-                        command = String(first(parts))  # Convert SubString to String
-                        args = length(parts) > 1 ? [String(a) for a in parts[2:end]] : String[]
+                        # During set_symbol conversation, treat /SYMBOL as text input
+                        if tg.conversation_state == :awaiting_symbol
+                            @info "Processing symbol input: $text"
+                            handle_text_message(tg, text)
+                        else
+                            parts = split(text)
+                            command = String(first(parts))  # Convert SubString to String
+                            args = length(parts) > 1 ? [String(a) for a in parts[2:end]] : String[]
 
-                        @info "Processing command: $command"
-                        handle_command(tg, command, args)
+                            @info "Processing command: $command"
+                            handle_command(tg, command, args)
+                        end
                     else
                         # Handle non-command text (e.g., button responses)
                         @info "Processing text message: $text"
@@ -584,7 +647,8 @@ function start_telegram_bot(tg::TelegramBot)
     keyboard_buttons = [
         ["/status", "/balance", "/position"],
         ["/do_long", "/stop_long", "/do_shrt"],
-        ["/stop_shrt", "/config", "/help"]
+        ["/stop_shrt", "/set_symbol", "/config"],
+        ["/stop", "/help"]
     ]
     keyboard = create_keyboard_markup(keyboard_buttons, resize_keyboard=true)
     

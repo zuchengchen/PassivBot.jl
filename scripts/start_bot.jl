@@ -84,6 +84,7 @@ function main()
     if auto_restart
         restart_count = 0
         bot = nothing
+        telegram = nothing  # Preserved across symbol changes
         
         # Register atexit handler for graceful shutdown (handles SIGTERM, exit, etc.)
         Base.atexit() do
@@ -100,8 +101,26 @@ function main()
                 # Create fresh bot instance
                 bot = BinanceBot(config)
                 
+                # Reassign telegram from previous bot if switching symbol
+                if telegram !== nothing
+                    bot.telegram = telegram
+                    telegram.bot_instance = bot
+                end
+                
                 # Start bot (blocking call)
                 start_bot(bot)
+                
+                # Check if symbol change was requested
+                if bot.new_symbol !== nothing
+                    new_sym = bot.new_symbol
+                    println("\n[$(now())] Symbol change requested: $(config["symbol"]) -> $new_sym")
+                    config["symbol"] = new_sym
+                    # Preserve telegram instance across bot recreation
+                    telegram = bot.telegram
+                    # Reset restart count for new symbol
+                    restart_count = 0
+                    continue
+                end
                 
                 # If we get here, bot stopped gracefully
                 println("\n[$(now())] Bot stopped gracefully")
@@ -143,6 +162,21 @@ function main()
         try
             bot = BinanceBot(config)
             start_bot(bot)
+            
+            # Handle symbol change even in single-run mode
+            while bot.new_symbol !== nothing
+                new_sym = bot.new_symbol
+                println("\n[$(now())] Symbol change requested: $(config["symbol"]) -> $new_sym")
+                config["symbol"] = new_sym
+                telegram = bot.telegram
+                bot = BinanceBot(config)
+                if telegram !== nothing
+                    bot.telegram = telegram
+                    telegram.bot_instance = bot
+                end
+                start_bot(bot)
+            end
+            
             println("\n[$(now())] Bot stopped gracefully")
         catch e
             if isa(e, InterruptException)
