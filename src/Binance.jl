@@ -407,7 +407,12 @@ function init_exchange_config!(bot::BinanceBot)
                               Dict("symbol" => bot.symbol, "marginType" => "CROSSED"))
         println(result)
     catch e
-        @warn "Setting margin type" exception=e
+        err_str = string(e)
+        if occursin("-4046", err_str)
+            println("margin type already CROSSED")
+        else
+            println("margin type error: ", err_str)
+        end
     end
 
     # Set leverage and extract max position size
@@ -431,7 +436,9 @@ function init_exchange_config!(bot::BinanceBot)
         println(res)
     catch e
         err_str = string(e)
-        if !occursin("-4059", err_str)
+        if occursin("-4059", err_str)
+            println("hedge mode already enabled")
+        else
             @error "Unable to set hedge mode" exception=e
             error("failed to set hedge mode")
         end
