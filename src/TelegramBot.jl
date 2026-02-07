@@ -697,7 +697,7 @@ function create_telegram_bot(config::Dict{String,Any}, bot_instance)
         String(token),  # Ensure String type, not SubString
         String(chat_id),  # Ensure String type, not SubString
         bot_instance,
-        config
+        tg_config
     )
 
     start_telegram_bot(tg)
