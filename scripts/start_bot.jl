@@ -13,6 +13,7 @@ Example:
 # Activate project environment automatically
 import Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
+Pkg.instantiate()
 
 using PassivBot
 using ArgParse
