@@ -30,6 +30,10 @@ results/
 # API Keys
 api-keys.json
 
+# Large test data
+test/comparison/test_ticks.csv
+test/comparison/test_ticks.npy
+
 # Temporary
 tmp/
 temp/
