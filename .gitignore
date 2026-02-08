@@ -45,8 +45,14 @@ OPTIMIZE_PORT_SUMMARY.md
 CODE_CLEANUP_PLAN.md
 CODE_CLEANUP_SUMMARY.md
 
-# Intermediate test configs
+# Intermediate test configs and optimization variants
 configs/backtest/RIVERUSDT.json
+configs/optimize/balanced.json
+configs/optimize/quick.json
+
+# Intermediate test/utility scripts
+scripts/download_sample_data.jl
+test/test_optimize_speed.jl
 
 # Agent working directories
 .sisyphus/
