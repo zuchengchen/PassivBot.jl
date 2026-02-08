@@ -4,11 +4,15 @@
 Start PassivBot live trading with auto-restart capability
 
 Usage:
-    julia --project=. scripts/start_bot.jl <account_name> <symbol> <config_path> [options]
+    julia scripts/start_bot.jl <account_name> <symbol> <config_path> [options]
 
 Example:
-    julia --project=. scripts/start_bot.jl binance_01 BTCUSDT configs/live/5x.json --restart
+    julia scripts/start_bot.jl binance_01 BTCUSDT configs/live/5x.json --restart
 """
+
+# Activate project environment automatically
+import Pkg
+Pkg.activate(joinpath(@__DIR__, ".."))
 
 using PassivBot
 using ArgParse
