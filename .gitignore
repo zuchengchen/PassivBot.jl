@@ -17,6 +17,11 @@
 .DS_Store
 Thumbs.db
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
 # Logs
 logs/
 *.log
@@ -30,9 +35,16 @@ results/
 # API Keys
 api-keys.json
 
-# Large test data
+# Test comparison output (generated)
+test/comparison/output/
+test/comparison/julia_*.json
+test/comparison/python_*.json
+test/comparison/diff_report.md
 test/comparison/test_ticks.csv
 test/comparison/test_ticks.npy
+
+# Agent working directories
+.sisyphus/
 
 # Temporary
 tmp/
