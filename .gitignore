@@ -35,13 +35,18 @@ results/
 # API Keys
 api-keys.json
 
-# Test comparison output (generated)
-test/comparison/output/
-test/comparison/julia_*.json
-test/comparison/python_*.json
-test/comparison/diff_report.md
-test/comparison/test_ticks.csv
-test/comparison/test_ticks.npy
+# Test comparison framework (intermediate)
+test/comparison/
+
+# Intermediate docs and summaries
+docs/plans/
+docs/OPTIMIZATION_*.md
+OPTIMIZE_PORT_SUMMARY.md
+CODE_CLEANUP_PLAN.md
+CODE_CLEANUP_SUMMARY.md
+
+# Intermediate test configs
+configs/backtest/RIVERUSDT.json
 
 # Agent working directories
 .sisyphus/
